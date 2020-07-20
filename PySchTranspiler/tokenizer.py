@@ -77,16 +77,3 @@ def t_error(t):
     raise ValueError(f"Illegal character '{t.value[0]}'")
 
 lexer = lex.lex()
-
-inp = input("TOKENIZE: ")
-
-lexer.input(inp)
-
-
-toks = []
-for tok in lexer:
-    toks.append(tok)
-
-from parser.constructs import FuncConstruct
-
-t = FuncConstruct(toks)
