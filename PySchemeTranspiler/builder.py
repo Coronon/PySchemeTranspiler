@@ -1,8 +1,6 @@
 from __future__ import annotations
 from typing import Dict, List, Tuple, Callable, Any
 
-from copy import deepcopy
-
 from ast import (
     AST,
     FunctionDef,
@@ -54,13 +52,14 @@ class _Builder():
                 Builder.setStateKey(node.args.args[i].arg, aType)
         
         #? Check for vararg
+        varArgFlag = False
         if node.args.vararg is not None:
+            varArgFlag = True
             args += f" . {node.args.vararg.arg}"
-            argTypes.append(list)
         
         #* Add self to state
         retType = Typer.deduceTypeFromNode(node.returns)
-        Builder.setStateKey(name, Typer.TFunction(argTypes, retType)) #! ADD to one innter state
+        Builder.setStateKeyPropagate(name, Typer.TFunction(argTypes, varArgFlag, retType)) #! ADD to one inner state
         
         #* Body
         body = ""
@@ -127,7 +126,7 @@ class _Builder():
                 raise TypeError(f"unsupported operand type(s) for {operant}: '{lType}' and '{rType}'")
             return flattenSubString(f"(string-append {lValue} {rValue})", 'string-append'), str
         else:
-            raise TypeError(f"unsupported operand type(s) for {operant}: '{lType}' and '{rType}'")
+            raise TypeError(f"unsupported operand type(s) for {Builder.buildFromNode(node.op)}: '{lType}' and '{rType}'")
     
     @staticmethod
     def Add(node: Add) -> str:
@@ -155,12 +154,14 @@ class _Builder():
         for target in node.targets:
             value, vType = Builder.buildFromNodeType(node.value)
             
-            if Builder.inState(target.id):
-                #! Strict mode
-                if (sType := Builder.getStateKey(target.id)) != vType:
-                    raise TypeError(f"Type {sType} and {vType} are incompatible for '{target.id}'")
-                #! Unstrict mode
-                # Builder.setStateKey(target.id, vType)
+            if Builder.inStateLocal(target.id):
+                if Builder.config['TYPES_STRICT']:
+                    #? Strict mode
+                    if (sType := Builder.getStateKeyLocal(target.id)) != vType:
+                        raise TypeError(f"Type {sType} and {vType} are incompatible for '{target.id}'")
+                else:
+                    #? Unstrict mode
+                    Builder.setStateKey(target.id, vType)
                     
                 ret += f"(set! {target.id} {value})"
             else:
@@ -187,6 +188,10 @@ class Builder():
     
     buildFlags = {
         'PRINT': False, #Include PRINT function
+    }
+    
+    config = {
+        'TYPES_STRICT' : True
     }
     
     stateHistory: List[Dict[str, Any]] = [{
@@ -242,6 +247,24 @@ class Builder():
     
     @staticmethod
     def getStateKey(key: str) -> Any:
+        """Get a specific element from the nearest scope
+
+        Arguments:
+            key {str} -- Key of element to get
+
+        Raises:
+            ValueError: Key not found
+
+        Returns:
+            Any -- Element found
+        """
+        for state in reversed(Builder.stateHistory):
+            if key in state:
+                return state[key]
+        raise KeyError(f"key {key} not in state")
+
+    @staticmethod
+    def getStateKeyLocal(key: str) -> Any:
         """Get a specific element from the current compilation State
 
         Arguments:
@@ -257,6 +280,21 @@ class Builder():
     
     @staticmethod
     def inState(key: str) -> bool:
+        """Check if a key is present in the nearest scope
+
+        Arguments:
+            key {str} -- Key to check
+
+        Returns:
+            bool -- Key in State
+        """
+        for state in reversed(Builder.stateHistory):
+            if key in state:
+                return True
+        return False
+    
+    @staticmethod
+    def inStateLocal(key: str) -> bool:
         """Check if a key is present in current compilation State
 
         Arguments:
@@ -271,7 +309,7 @@ class Builder():
     def widenState() -> None:
         """Widen the compilation State on new scope
         """
-        Builder.stateHistory.append(deepcopy(Builder.getState()))
+        Builder.stateHistory.append({})
     
     @staticmethod
     def popState() -> Dict[str, Any]:
@@ -297,6 +335,17 @@ class Builder():
             value {Any} -- Value of element
         """
         Builder.stateHistory[-1][key] = value
+    
+    @staticmethod
+    def setStateKeyPropagate(key: str, value: Any) -> None:
+        """Set a key in the compilation State in the current AND parent scope
+
+        Arguments:
+            key   {str} -- Key of element
+            value {Any} -- Value of element
+        """
+        Builder.stateHistory[-1][key] = value
+        Builder.stateHistory[-2][key] = value
     
     @staticmethod
     def setState(state: Dict[str, Any]) -> None:
@@ -351,9 +400,10 @@ class Typer():
     class TFunction(T):
         type = "TFunction"
         
-        def __init__(self, args: List[type], ret: type):
-            self.args = args
-            self.ret  = ret
+        def __init__(self, args: List[type], vararg: bool, ret: type):
+            self.args   = args
+            self.vararg = vararg
+            self.ret    = ret
     
     switcher: Dict[type, Callable] = {
         Constant : _Typer.Constant,
