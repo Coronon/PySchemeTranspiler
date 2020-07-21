@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Dict, List, Callable, Any
+from typing import Dict, List, Tuple, Callable, Any
 
 from copy import deepcopy
 
@@ -14,7 +14,8 @@ from ast import (
     Mult,
     Div,
     Name,
-    Assign
+    Assign,
+    arg
     )
 
 class _Builder():
@@ -30,6 +31,7 @@ class _Builder():
         name = node.name
         #* Arguments
         args = ""
+        argTypes = []
         
         argsLen     = len(node.args.args)
         defaultsLen = len(node.args.defaults)
@@ -39,13 +41,26 @@ class _Builder():
             if (default := -(argsLen-defaultsLen-i)) >= 0:
                 #? Argument with default
                 args += f"#:{node.args.args[i].arg} [{node.args.args[i].arg} {Builder.buildFromNode(node.args.defaults[default])}]"
+                
+                aType = Typer.deduceTypeFromNode(node.args.args[i])
+                argTypes.append(aType)
+                Builder.setStateKey(node.args.args[i].arg, aType)
             else:
                 #? Normal argument
                 args += node.args.args[i].arg
+                
+                aType = Typer.deduceTypeFromNode(node.args.args[i])
+                argTypes.append(aType)
+                Builder.setStateKey(node.args.args[i].arg, aType)
         
         #? Check for vararg
         if node.args.vararg is not None:
             args += f" . {node.args.vararg.arg}"
+            argTypes.append(list)
+        
+        #* Add self to state
+        retType = Typer.deduceTypeFromNode(node.returns)
+        Builder.setStateKey(name, Typer.TFunction(argTypes, retType)) #! ADD to one innter state
         
         #* Body
         body = ""
@@ -56,13 +71,15 @@ class _Builder():
         return f'(define ({name} {args}) {body})'
 
     @staticmethod
-    def Constant(node: Constant) -> str:
+    def Constant(node: Constant) -> Tuple[str]:
         value = node.value
         
         if isinstance(value, str):
-            return f'"{value}"'
+            return f'"{value}"', str
         elif isinstance(value, int):
-            return str(value)
+            return str(value), int
+        elif isinstance(value, float):
+            return str(value), float
         else:
             _Builder.error(node)
     
@@ -71,25 +88,46 @@ class _Builder():
         return Builder.buildFromNode(node.value)
     
     @staticmethod
-    def BinOp(node: BinOp) -> str:
-        def flattenBinOp(operation: str) -> str:
+    def BinOp(node: BinOp) -> Tuple[str, Any]:
+        numberTypes = [int, float]
+        def flattenNumberBinOp(operation: str) -> str:
             ops = ['+', '-', '*', '/']
             for op in ops:
                 i = 0
-                terminator = len(operation)-1
                 while True:
                     i = operation.find(op, i)
                     if i != -1 and operation[i+3] == op:
                         closer = operation.find(')', i)
                         operation = operation[:i-1]+operation[i+2:closer]+operation[closer+1:]
-                        terminator = len(operation)-1
                         i = 0
                     else:
                         break
             
             return operation
+        def flattenSubString(operation: str, sub: str):
+            l = len(sub)
+            i = 0
+            while True:
+                i = operation.find(sub, i)
+                if i != -1 and operation[i+15:i+2*l+2] == sub:
+                    closer = operation.find(')', i)
+                    operation = operation[:i-1]+operation[i+l+1:closer]+operation[closer+1:]
+                    i = 0
+                else:
+                    break
+            return operation
         
-        return flattenBinOp(f"({Builder.buildFromNode(node.op)} {Builder.buildFromNode(node.left)} {Builder.buildFromNode(node.right)})")
+        lValue, lType = Builder.buildFromNodeType(node.left)
+        rValue, rType = Builder.buildFromNodeType(node.right)
+        
+        if lType in numberTypes and rType in numberTypes:
+            return flattenNumberBinOp(f"({Builder.buildFromNode(node.op)} {lValue} {rValue})"), int if lType == int and rType == int else float
+        elif lType == str and rType == str:
+            if (operant := Builder.buildFromNode(node.op)) != '+':
+                raise TypeError(f"unsupported operand type(s) for {operant}: '{lType}' and '{rType}'")
+            return flattenSubString(f"(string-append {lValue} {rValue})", 'string-append'), str
+        else:
+            raise TypeError(f"unsupported operand type(s) for {operant}: '{lType}' and '{rType}'")
     
     @staticmethod
     def Add(node: Add) -> str:
@@ -109,17 +147,25 @@ class _Builder():
     
     @staticmethod
     def Name(node: Name) -> str:
-        return node.id
+        return node.id, Builder.getStateKey(node.id)
     
     @staticmethod
     def Assign(node: Assign) -> str:
         ret = ""
         for target in node.targets:
+            value, vType = Builder.buildFromNodeType(node.value)
+            
             if Builder.inState(target.id):
-                ret += f"(set! {target.id} {Builder.buildFromNode(node.value)})"
+                #! Strict mode
+                if (sType := Builder.getStateKey(target.id)) != vType:
+                    raise TypeError(f"Type {sType} and {vType} are incompatible for '{target.id}'")
+                #! Unstrict mode
+                # Builder.setStateKey(target.id, vType)
+                    
+                ret += f"(set! {target.id} {value})"
             else:
-                Builder.setStateKey(target.id, 'DEFINED')
-                ret += f"(define {target.id} {Builder.buildFromNode(node.value)})"
+                Builder.setStateKey(target.id, vType)
+                ret += f"(define {target.id} {value})"
         
         return ret
     
@@ -139,7 +185,16 @@ class Builder():
         Assign      : _Builder.Assign
     }
     
-    stateHistory: List[Dict[str, Any]] = [{}]
+    buildFlags = {
+        'PRINT': False, #Include PRINT function
+    }
+    
+    stateHistory: List[Dict[str, Any]] = [{
+        'bool' : bool,
+        'int'  : int,
+        'str'  : str,
+        'list' : list
+    }]
     
     @staticmethod
     def buildFromNode(node: AST) -> str:
@@ -152,7 +207,29 @@ class Builder():
             str -- Compiled sourceCode
         """
         #* Switch of all Nodes supported
-        return Builder.switcher.get(type(node), _Builder.error)(node)
+        ret = Builder.switcher.get(type(node), _Builder.error)(node)
+        if isinstance(ret, tuple):
+            return ret[0]
+        
+        return ret
+    
+    @staticmethod
+    def buildFromNodeType(node: AST) -> Tuple[str, Any]:
+        """Build sourceCode from a AST node with type information
+
+        Arguments:
+            node {AST} -- Node to compile
+
+        Returns:
+            str -- Compiled sourceCode
+            Any -- Type of compiled object (for internal use)
+        """
+        #* Switch of all Nodes supported
+        ret = Builder.switcher.get(type(node), _Builder.error)(node)
+        if isinstance(ret, tuple):
+            return ret
+        
+        return ret, Typer.Null()
     
     @staticmethod
     def getState() -> Dict[str, Any]:
@@ -229,3 +306,61 @@ class Builder():
             state {Dict[str, Any]} -- Compilation State
         """
         Builder.stateHistory[-1] = state
+
+
+class _Typer():
+    literals: Dict[str, type] = {
+        'bool' : bool,
+        'int'  : int,
+        'str'  : str,
+        'list' : list
+    }
+    
+    @staticmethod
+    def error(node: AST):
+        raise TypeError(f"Type of node {node} can not be deduced")
+    
+    
+    @staticmethod
+    def _literlName(node: str):
+        return _Typer.literals.get(node, _Typer.error)
+    
+    @staticmethod
+    def Constant(node: Constant):
+        return type(node.value)
+    
+    @staticmethod
+    def Name(node: Name):
+        return Builder.getStateKey(node.id)
+        
+    @staticmethod
+    def arg(node: arg):
+        return _Typer._literlName(node.annotation.id)
+
+
+class Typer():
+    
+    class T():
+        def __repr__(self):
+            return str(self.__dict__)
+    
+    class Null(T):
+        type = "Null"
+        pass
+    
+    class TFunction(T):
+        type = "TFunction"
+        
+        def __init__(self, args: List[type], ret: type):
+            self.args = args
+            self.ret  = ret
+    
+    switcher: Dict[type, Callable] = {
+        Constant : _Typer.Constant,
+        Name     : _Typer.Name,
+        arg      : _Typer.arg
+    }
+    
+    @staticmethod
+    def deduceTypeFromNode(node: AST):
+        return Typer.switcher.get(type(node), _Typer.error)(node)
