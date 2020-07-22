@@ -13,8 +13,13 @@ from ast import (
     Div,
     Name,
     Assign,
+    UnaryOp,
+    UAdd,
+    USub,
     arg
     )
+
+NUMBER_TYPES = [int, float]
 
 class _Builder():
        
@@ -88,7 +93,6 @@ class _Builder():
     
     @staticmethod
     def BinOp(node: BinOp) -> Tuple[str, Any]:
-        numberTypes = [int, float]
         def flattenNumberBinOp(operation: str) -> str:
             ops = ['+', '-', '*', '/']
             for op in ops:
@@ -119,14 +123,14 @@ class _Builder():
         lValue, lType = Builder.buildFromNodeType(node.left)
         rValue, rType = Builder.buildFromNodeType(node.right)
         
-        if lType in numberTypes and rType in numberTypes:
+        if lType in NUMBER_TYPES and rType in NUMBER_TYPES:
             return flattenNumberBinOp(f"({Builder.buildFromNode(node.op)} {lValue} {rValue})"), int if lType == int and rType == int else float
         elif lType == str and rType == str:
             if (operant := Builder.buildFromNode(node.op)) != '+':
                 raise TypeError(f"unsupported operand type(s) for {operant}: '{lType}' and '{rType}'")
             return flattenSubString(f"(string-append {lValue} {rValue})", 'string-append'), str
-        else:
-            raise TypeError(f"unsupported operand type(s) for {Builder.buildFromNode(node.op)}: '{lType}' and '{rType}'")
+
+        raise TypeError(f"unsupported operand type(s) for {Builder.buildFromNode(node.op)}: '{lType}' and '{rType}'")
     
     @staticmethod
     def Add(node: Add) -> str:
@@ -170,6 +174,29 @@ class _Builder():
         
         return ret
     
+    @staticmethod
+    def UnaryOp(node: UnaryOp) -> Tuple[str, type]:
+        value, vType = Builder.buildFromNodeType(node.operand)
+
+        if vType not in NUMBER_TYPES:
+            raise TypeError(f"unaryOperation '{node.op}' can not be applied to type {vType}'")
+        if Builder.buildFromNode(node.op) == "+":
+            return value, vType
+        elif Builder.buildFromNode(node.op) == "-":
+            if type(node.operand) == Constant:
+                return f"-{value}", vType
+            
+            return f"(- {value})", vType
+        
+        raise TypeError(f"unaryOperation '{node.op}' can not be applied to type {vType}'")
+    
+    @staticmethod
+    def UAdd(node: UAdd) -> str:
+        return "+"
+    
+    @staticmethod
+    def USub(node: USub) -> str:
+        return "-"
 
 class Builder():
     Interpreter = Callable[[AST], str]
@@ -183,7 +210,10 @@ class Builder():
         Mult        : _Builder.Mult,
         Div         : _Builder.Div,
         Name        : _Builder.Name,
-        Assign      : _Builder.Assign
+        Assign      : _Builder.Assign,
+        UnaryOp     : _Builder.UnaryOp,
+        UAdd        : _Builder.UAdd,
+        USub        : _Builder.USub
     }
     
     buildFlags = {
@@ -395,7 +425,9 @@ class Typer():
     
     class Null(T):
         type = "Null"
-        pass
+        
+        def __repr__(self):
+            return "NULL"
     
     class TFunction(T):
         type = "TFunction"
