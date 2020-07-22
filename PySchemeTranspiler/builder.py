@@ -273,6 +273,9 @@ class _Builder():
                     if args != "": args += " "
                     args += i[1]
                 
+                if args == "":
+                    return f"({fName})", fType.ret
+                    
                 return f"({fName} {args})", fType.ret
             
             @staticmethod

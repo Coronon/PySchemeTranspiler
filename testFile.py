@@ -4,4 +4,5 @@ def a(a: int) -> int:
 def b(b: int) -> float:
     return a(b) + 3.14
 
-(b(a(7)))
+print(b(a(7)))
+print()
