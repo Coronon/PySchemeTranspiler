@@ -4,4 +4,6 @@ from PySchemeTranspiler.builder import Builder
 with open('testFile.py', 'r') as file:
     toks = Parser.parseFile(file)
 
-print(Builder.buildFromNode(toks.body[0]))
+Builder.initState()
+for i in toks.body:
+    print(Builder.buildFromNode(i))

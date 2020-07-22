@@ -16,6 +16,9 @@ from ast import (
     UnaryOp,
     UAdd,
     USub,
+    Expr,
+    Call,
+    keyword,
     arg
     )
 
@@ -34,7 +37,10 @@ class _Builder():
         name = node.name
         #* Arguments
         args = ""
-        argTypes = []
+        argTypesDef = []
+        argTypesKey = {}
+        
+        setStateQueue: List[Tuple[str, type]] = []
         
         argsLen     = len(node.args.args)
         defaultsLen = len(node.args.defaults)
@@ -46,15 +52,15 @@ class _Builder():
                 args += f"#:{node.args.args[i].arg} [{node.args.args[i].arg} {Builder.buildFromNode(node.args.defaults[default])}]"
                 
                 aType = Typer.deduceTypeFromNode(node.args.args[i])
-                argTypes.append(aType)
-                Builder.setStateKey(node.args.args[i].arg, aType)
+                argTypesKey[node.args.args[i].arg] = aType
+                setStateQueue.append((node.args.args[i].arg, aType))
             else:
                 #? Normal argument
                 args += node.args.args[i].arg
                 
                 aType = Typer.deduceTypeFromNode(node.args.args[i])
-                argTypes.append(aType)
-                Builder.setStateKey(node.args.args[i].arg, aType)
+                argTypesDef.append(aType)
+                setStateQueue.append((node.args.args[i].arg, aType))
         
         #? Check for vararg
         varArgFlag = False
@@ -64,14 +70,17 @@ class _Builder():
         
         #* Add self to state
         retType = Typer.deduceTypeFromNode(node.returns)
-        Builder.setStateKeyPropagate(name, Typer.TFunction(argTypes, varArgFlag, retType))
+        Builder.setStateKeyPropagate(name, Typer.TFunction(argTypesDef, argTypesKey, varArgFlag, retType))
+        
+        for t in setStateQueue:
+            Builder.setStateKey(*t)
         
         #* Body
         body = ""
         for i in node.body:
             body += Builder.buildFromNode(i)
             #! We dont support more than one return at the moment
-            if type(i) == Return:
+            if isinstance(i, Return):
                 break
         
         Builder.popState()
@@ -186,7 +195,7 @@ class _Builder():
         if Builder.buildFromNode(node.op) == "+":
             return value, vType
         elif Builder.buildFromNode(node.op) == "-":
-            if type(node.operand) == Constant:
+            if isinstance(node.operand, Constant):
                 return f"-{value}", vType
             
             return f"(- {value})", vType
@@ -200,6 +209,87 @@ class _Builder():
     @staticmethod
     def USub(node: USub) -> str:
         return "-"
+    
+    @staticmethod
+    def Expr(node: Expr) -> Tuple[str, type]:
+        return Builder.buildFromNodeType(node.value)
+    
+    @staticmethod
+    def Call(node: Call) -> Tuple[str, type]:
+        class CallResolver():
+            @staticmethod
+            def normal(node: Call) -> Tuple[str, type]:
+                #* Type lookup
+                fName = Builder.buildFromNode(node.func)
+                fType: Typer.TFunction = Builder.getStateKey(fName)
+                
+                #? Check argument length matches
+                fArgsDef = len(fType.args)
+                fArgsKey = len(fType.kwArgs)
+                fArgs    = fArgsDef + fArgsKey
+                nArgsDef = len(node.args)
+                nArgsKey = len(node.keywords)
+                nArgs = nArgsDef + nArgsKey
+                if (fType.vararg and nArgsDef < fArgsDef) or (not fType.vararg and fArgsDef != nArgsDef):
+                    raise TypeError(f"{fName} takes {fArgsDef} positional arguments but you provided {nArgs}")
+                
+                if not (nArgsKey <= fArgsKey):
+                    raise TypeError(f"{fName} takes {fArgsKey} keyword arguments but you provided {nArgsKey}")
+                
+                #* Parse arguments
+                #? Default args
+                argListDef: List[Tuple[str, type]] = []
+                for arg in node.args:
+                    argListDef.append(Builder.buildFromNodeType(arg))
+                
+                # Check default argument types match
+                args = ""
+                for i in range(len(fType.args)):
+                    if argListDef[i][1] != fType.args[i] and fType.args[i] != Any and argListDef[i][1] != Any:
+                        raise TypeError(f"type {argListDef[i][1]} can not be applied to argument of type {fType.args[i]}")
+                    if args != "": args += " "
+                    args += argListDef.pop(0)[0]
+                
+                for arg in argListDef:
+                    if args != "": args += " "
+                    args += arg[0]
+                
+                #? Keyword args
+                def getKeywordName(argument: str) -> str:
+                    return argument.split(" ")[0][2:]
+                
+                #Tuple[kwName, kwCode, kwType]
+                argListKey: List[Tuple[str, str, type]] = []
+                for arg in node.keywords:
+                    value, vType = Builder.buildFromNodeType(arg)
+                    argListKey.append((getKeywordName(value), value, vType))
+                
+                # Check keyword argument types match
+                for i in argListKey:
+                    if i[0] not in fType.kwArgs:
+                        raise TypeError(f"'{i[0]}' is an invalid keyword argument for {fName}")
+                    if i[2] != fType.kwArgs[i[0]] and fType.kwArgs[i[0]] != Any and i[2]  != Any:
+                        raise TypeError(f"type {i[2]} can not be applied to argument of type {fType.kwArgs[i[0]]}")
+                    if args != "": args += " "
+                    args += i[1]
+                
+                return f"({fName} {args})", fType.ret
+            
+            @staticmethod
+            def print(node: Call) -> Tuple[str, type]:
+                Builder.buildFlags['PRINT'] = True
+                return CallResolver.normal(node)
+        
+        specials: Dict[str, Callable[[Call], Tuple[str, type]]] = {
+            'print': CallResolver.print
+        }
+        
+        return specials.get(Builder.buildFromNode(node.func), CallResolver.normal)(node)
+
+    @staticmethod
+    def keyword(node: Keyword) -> Tuple[str, type]:
+        value, vType = Builder.buildFromNodeType(node.value)
+        return f"#:{node.arg} {value}", vType
 
 class Builder():
     Interpreter = Callable[[AST], str]
@@ -216,7 +306,10 @@ class Builder():
         Assign      : _Builder.Assign,
         UnaryOp     : _Builder.UnaryOp,
         UAdd        : _Builder.UAdd,
-        USub        : _Builder.USub
+        USub        : _Builder.USub,
+        Expr        : _Builder.Expr,
+        Call        : _Builder.Call,
+        keyword     : _Builder.keyword
     }
     
     buildFlags = {
@@ -227,12 +320,8 @@ class Builder():
         'TYPES_STRICT' : True
     }
     
-    stateHistory: List[Dict[str, Any]] = [{
-        'bool' : bool,
-        'int'  : int,
-        'str'  : str,
-        'list' : list
-    }]
+    #? For default state see `Builder.initState()`
+    stateHistory: List[Dict[str, Any]] = [{}]
     
     @staticmethod
     def buildFromNode(node: AST) -> str:
@@ -268,6 +357,19 @@ class Builder():
             return ret
         
         return ret, Typer.Null()
+    
+    @staticmethod
+    def initState() -> None:
+        """Init the root state to avoid foreward declaration issues
+        """
+        Builder.setState({
+            'bool' : bool,
+            'int'  : int,
+            'float': float,
+            'str'  : str,
+            'list' : list,
+            'print': Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None)
+        })
     
     @staticmethod
     def getState() -> Dict[str, Any]:
@@ -394,6 +496,7 @@ class _Typer():
     literals: Dict[str, type] = {
         'bool' : bool,
         'int'  : int,
+        'float': float,
         'str'  : str,
         'list' : list
     }
@@ -435,8 +538,9 @@ class Typer():
     class TFunction(T):
         type = "TFunction"
         
-        def __init__(self, args: List[type], vararg: bool, ret: type):
+        def __init__(self, args: List[type], kwArgs: Dict[str, type], vararg: bool, ret: type):
             self.args   = args
+            self.kwArgs = kwArgs
             self.vararg = vararg
             self.ret    = ret
     

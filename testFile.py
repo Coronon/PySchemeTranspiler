@@ -1,7 +1,7 @@
-def add(a: int, b: int, e: str="Hallo :)") -> int:
-    f = a + b
-    d = f - 124434.3
-    j = -17 + 45345
-    return j
+def a(a: int) -> int:
+    return a + 17
 
-print(add(17,6))
+def b(b: int) -> float:
+    return a(b) + 3.14
+
+(b(a(7)))
