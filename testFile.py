@@ -1,5 +1,6 @@
-def add(a: int, b: int, c: str="Hallo :)") -> int:
-    c = ((("Hello" + " friend") + ",") + " my") + " name is" + " Rubin"
+def add(a: int, b: int, e: str="Hallo :)") -> int:
+    c = " du da"
+    d = a - 17
     return c
 
 print(add(17,6))
