@@ -64,12 +64,15 @@ class _Builder():
         
         #* Add self to state
         retType = Typer.deduceTypeFromNode(node.returns)
-        Builder.setStateKeyPropagate(name, Typer.TFunction(argTypes, varArgFlag, retType)) #! ADD to one inner state
+        Builder.setStateKeyPropagate(name, Typer.TFunction(argTypes, varArgFlag, retType))
         
         #* Body
         body = ""
         for i in node.body:
             body += Builder.buildFromNode(i)
+            #! We dont support more than one return at the moment
+            if type(i) == Return:
+                break
         
         Builder.popState()
         return f'(define ({name} {args}) {body})'
