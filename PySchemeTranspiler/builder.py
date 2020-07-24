@@ -19,10 +19,22 @@ from ast import (
     Expr,
     Call,
     keyword,
+    If,
+    Compare,
+    BoolOp,
+    Or,
+    And,
+    Eq,
+    NotEq,
+    Lt,
+    LtE,
+    Gt,
+    GtE,
     arg
     )
 
 NUMBER_TYPES = [int, float]
+SEPERATOR = '\n'
 
 class _Builder():
        
@@ -92,6 +104,13 @@ class _Builder():
         
         if isinstance(value, str):
             return f'"{value}"', str
+        #? This has to be before int as bool is a subclass of int
+        elif isinstance(value, bool):
+            boolSwitcher: Dict[bool, str] = {
+                True  : "#t",
+                False : "#f"
+            }
+            return boolSwitcher[value], bool
         elif isinstance(value, int):
             return str(value), int
         elif isinstance(value, float):
@@ -182,7 +201,11 @@ class _Builder():
                 ret += f"(set! {target.id} {value})"
             else:
                 Builder.setStateKey(target.id, vType)
-                ret += f"(define {target.id} {value})"
+                if Builder.getStateKeyLocal('__assignSkipValue__'):
+                    #? Some component doesnt want us to include the value
+                    ret += f"(define {target.id} void)"
+                else:
+                    ret += f"(define {target.id} {value})"
         
         return ret
     
@@ -281,6 +304,7 @@ class _Builder():
             @staticmethod
             def print(node: Call) -> Tuple[str, type]:
                 Builder.buildFlags['PRINT'] = True
+                node.func.id = "PRINT"
                 return CallResolver.normal(node)
         
         specials: Dict[str, Callable[[Call], Tuple[str, type]]] = {
@@ -294,6 +318,155 @@ class _Builder():
         value, vType = Builder.buildFromNodeType(node.value)
         return f"#:{node.arg} {value}", vType
 
+    @staticmethod
+    def If(node: If) -> str:
+        def handleAssign(node: Assign) -> str:
+            oldState = Builder.getStateKeyLocal('__assignSkipValue__')
+            Builder.setStateKey('__assignSkipValue__', True)
+            possibleDefine = Builder.buildFromNode(elem)
+            Builder.setStateKey('__assignSkipValue__', oldState)
+            if possibleDefine[:5] != "(set!":
+                Builder.setStateKey(
+                '__ifDefinitions__',
+                [*Builder.getStateKeyLocal('__ifDefinitions__'), possibleDefine]
+                )
+                return Builder.buildFromNode(elem)
+            
+            return possibleDefine
+        
+        paths: List[str] = []
+        body = ""
+        
+        #* Check if hierarchy
+        rootIf = False
+        if not Builder.getStateKeyLocal('__if__'):
+            #? Root if
+            rootIf = True
+            Builder.setStateKey('__if__', True)
+        
+        oldIfBody = Builder.getStateKey('__ifBody__')
+        Builder.setStateKey('__ifBody__', True)
+        for elem in node.body:
+            #? Move possible definitions before rootIf in current scope
+            if isinstance(elem, Assign):
+                handleAssign(elem)
+            
+            body += Builder.buildFromNode(elem)
+        Builder.setStateKey('__ifBody__', oldIfBody)
+        
+        if len(body) == 0:
+            raise IndentationError("expected an indented block")
+        
+        paths.append(f"({Builder.buildFromNode(node.test)} {body})")
+        
+        if node.orelse:
+            if isinstance(node.orelse[0], If):
+                oldIfBody = Builder.getStateKey('__ifBody__')
+                Builder.setStateKey('__ifBody__', False)
+                paths.append(Builder.buildFromNode(node.orelse[0]))
+                Builder.setStateKey('__ifBody__', oldIfBody)
+            else:
+                body = ""
+                oldIfBody = Builder.getStateKey('__ifBody__')
+                Builder.setStateKey('__ifBody__', True)
+                for elem in node.orelse:
+                    #? Move possible definitions before rootIf in current scope
+                    if isinstance(elem, Assign):
+                        handleAssign(elem)
+                    
+                    body += Builder.buildFromNode(elem)
+                Builder.setStateKey('__ifBody__', oldIfBody)
+                paths.append(f"(else {body})")
+                
+                
+        
+        if not rootIf:
+            if not Builder.getStateKey('__ifBody__'):
+                return SEPERATOR.join(paths)
+            else:
+                return f"(cond {' '.join(paths)})"
+        else:
+            Builder.setStateKey('__if__', False)
+            
+            defs = Builder.getStateKeyLocal('__ifDefinitions__')
+            Builder.setStateKey('__ifDefinitions__', [])
+            
+            return f"{SEPERATOR.join(defs)}{SEPERATOR if len(defs) > 0 else ''}(cond {' '.join(paths)})"
+    
+    @staticmethod
+    def Compare(node: Compare) -> Tuple[str, type]:
+        def determineOp(op: str, type1: type, type2: type) -> str:
+            if op == "==":
+                return "equal?"
+            if op == "!=":
+                return "!="
+            
+            #? Numbers
+            if type1 in NUMBER_TYPES and type2 in NUMBER_TYPES:
+                return op
+            #? Strings
+            if type1 == str and type2 == str:
+                return f"string{op}?"
+            
+            raise TypeError(f"can not compare instances of types {type1} and {type2}")
+        
+        fLeftV, fLeftT   = Builder.buildFromNodeType(node.left)
+        fRightV, fRightT = Builder.buildFromNodeType(node.comparators[0])
+        fOp = determineOp(Builder.buildFromNode(node.ops[0]), fLeftT, fRightT)
+        ret = f"({fOp} {fLeftV} {fRightV})"
+        if len(node.ops) == 1:
+            return ret, bool
+
+        #? Statements like: a < b > c < d -> a < b && b > c && c < d
+        # We compile them into a flattend and
+        for i in range(1, len(node.ops)):
+            leftE, rightE, opE = node.comparators[i-1], node.comparators[i], Builder.buildFromNode(node.ops[i])
+            leftV, leftT   = Builder.buildFromNodeType(leftE)
+            rightV, rightT = Builder.buildFromNodeType(rightE)
+            op = determineOp(opE, leftT, rightT)
+            ret += f"({op} {leftV} {rightV})"
+            
+        ret = f"(and {ret})"
+        return ret, bool
+        
+    @staticmethod
+    def BoolOp(node: BoolOp) -> Tuple[str, type]:
+        return f"({Builder.buildFromNode(node.op)} {' '.join([Builder.buildFromNode(x) for x in node.values])})", bool
+        
+    @staticmethod
+    def Or(node: Or) -> Tuple[str, type]:
+        return "or", bool
+
+    @staticmethod
+    def And(node: And) -> Tuple[str, type]:
+        return "and", bool
+    
+    @staticmethod
+    def Eq(node: Eq) -> str:
+        return "=="
+
+    @staticmethod
+    def NotEq(node: NotEq) -> str:
+        Builder.buildFlags['NOT_EQUAL'] = True
+        return "!="
+    
+    @staticmethod
+    def Lt(node: Lt) -> str:
+        return "<"
+    
+    @staticmethod
+    def LtE(node: LtE) -> str:
+        return "<="
+    
+    @staticmethod
+    def Gt(node: Gt) -> str:
+        return ">"
+    
+    @staticmethod
+    def GtE(node: GtE) -> str:
+        return ">="
+   
+    
 class Builder():
     Interpreter = Callable[[AST], str]
     switcher: Dict[type, Callable] = {
@@ -312,16 +485,30 @@ class Builder():
         USub        : _Builder.USub,
         Expr        : _Builder.Expr,
         Call        : _Builder.Call,
+        If          : _Builder.If,
+        Compare     : _Builder.Compare,
+        BoolOp      : _Builder.BoolOp,
+        Or          : _Builder.Or,
+        And         : _Builder.And,
+        Eq          : _Builder.Eq,
+        NotEq       : _Builder.NotEq,
+        Lt          : _Builder.Lt,
+        LtE         : _Builder.LtE,
+        Gt          : _Builder.Gt,
+        GtE         : _Builder.GtE,
         keyword     : _Builder.keyword
     }
     
     buildFlags = {
-        'PRINT': False, #Include PRINT function
+        'PRINT'     : False, # Include PRINT function
+        'NOT_EQUAL' : False  # Include != function
     }
     
     config = {
         'TYPES_STRICT' : True
     }
+    
+    defaultWidenedState = {}
     
     #? For default state see `Builder.initState()`
     stateHistory: List[Dict[str, Any]] = [{}]
@@ -365,14 +552,23 @@ class Builder():
     def initState() -> None:
         """Init the root state to avoid foreward declaration issues
         """
-        Builder.setState({
+        defaultRootExclusiveState = {
             'bool' : bool,
             'int'  : int,
             'float': float,
             'str'  : str,
             'list' : list,
-            'print': Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None)
-        })
+            'print': Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None), #? This is a dummy that will be transpiled to 'PRINT'
+            'PRINT': Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None)
+        }
+        Builder.defaultWidenedState = {
+            '__if__'              : False, #? Flag for transpiler if in an active if statement
+            '__ifBody__'          : False, #? Flag for tramspiler if currently in an if body
+            '__ifDefinitions__'   : [],    #? Used to store local definitions to make them persistent on lvl of rootif
+            '__assignSkipValue__' : False  #? Flag for transpiler to not include value in assignment
+        }
+        
+        Builder.setState({**defaultRootExclusiveState, **Builder.defaultWidenedState})
     
     @staticmethod
     def getState() -> Dict[str, Any]:
@@ -447,7 +643,7 @@ class Builder():
     def widenState() -> None:
         """Widen the compilation State on new scope
         """
-        Builder.stateHistory.append({})
+        Builder.stateHistory.append(Builder.defaultWidenedState)
     
     @staticmethod
     def popState() -> Dict[str, Any]:
