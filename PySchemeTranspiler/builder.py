@@ -193,7 +193,10 @@ class _Builder():
                 if Builder.config['TYPES_STRICT']:
                     #? Strict mode
                     if (sType := Builder.getStateKeyLocal(target.id)) != vType:
-                        raise TypeError(f"Type {sType} and {vType} are incompatible for '{target.id}'")
+                        if not (sType == int and vType == float): 
+                            raise TypeError(f"Type {sType} and {vType} are incompatible for '{target.id}'")
+                        #? Allow automatic conversion from int->float but NOT float->int (data loss)
+                        Builder.setStateKey(target.id, float)
                 else:
                     #? Unstrict mode
                     Builder.setStateKey(target.id, vType)
@@ -268,10 +271,11 @@ class _Builder():
                 # Check default argument types match
                 args = ""
                 for i in range(len(fType.args)):
-                    if argListDef[i][1] != fType.args[i] and fType.args[i] != Any and argListDef[i][1] != Any:
+                    if (
+                        argListDef[i][1] != fType.args[i] 
+                        and (fType.args[i] != Any and argListDef[i][1] != Any)
+                        and (fType.args[i] != float and argListDef[i][1] != int)):
                         raise TypeError(f"type {argListDef[i][1]} can not be applied to argument of type {fType.args[i]}")
-                    if args != "": args += " "
-                    args += argListDef.pop(0)[0]
                 
                 for arg in argListDef:
                     if args != "": args += " "
@@ -291,7 +295,10 @@ class _Builder():
                 for i in argListKey:
                     if i[0] not in fType.kwArgs:
                         raise TypeError(f"'{i[0]}' is an invalid keyword argument for {fName}")
-                    if i[2] != fType.kwArgs[i[0]] and fType.kwArgs[i[0]] != Any and i[2]  != Any:
+                    if (
+                        i[2] != fType.kwArgs[i[0]]
+                        and (fType.kwArgs[i[0]] != Any and i[2]  != Any)
+                        and (fType.kwArgs[i[0]] != float and i[2]  != int)):
                         raise TypeError(f"type {i[2]} can not be applied to argument of type {fType.kwArgs[i[0]]}")
                     if args != "": args += " "
                     args += i[1]
