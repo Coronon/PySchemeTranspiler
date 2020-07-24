@@ -61,9 +61,19 @@ class _Builder():
             
             if (default := -(argsLen-defaultsLen-i)) >= 0:
                 #? Argument with default
-                args += f"#:{node.args.args[i].arg} [{node.args.args[i].arg} {Builder.buildFromNode(node.args.defaults[default])}]"
+                argV, argT = Builder.buildFromNodeType(node.args.defaults[default])
+                args += f"#:{node.args.args[i].arg} [{node.args.args[i].arg} {argV}]"
                 
                 aType = Typer.deduceTypeFromNode(node.args.args[i])
+                #Todo: Add type compatibility checker to avoid spreading these all over the code
+                if (
+                    aType != argT
+                    and not (aType == float and argT == int)
+                    ):
+                    raise TypeError(
+                        f"annotaion type {aType} and default type {argT} are incompatible for argument '{node.args.args[i].arg}' of {name}"
+                        )
+                
                 argTypesKey[node.args.args[i].arg] = aType
                 setStateQueue.append((node.args.args[i].arg, aType))
             else:
@@ -274,7 +284,7 @@ class _Builder():
                     if (
                         argListDef[i][1] != fType.args[i] 
                         and (fType.args[i] != Any and argListDef[i][1] != Any)
-                        and (fType.args[i] != float and argListDef[i][1] != int)):
+                        and not (fType.args[i] == float and argListDef[i][1] == int)):
                         raise TypeError(f"type {argListDef[i][1]} can not be applied to argument of type {fType.args[i]}")
                 
                 for arg in argListDef:
@@ -298,7 +308,7 @@ class _Builder():
                     if (
                         i[2] != fType.kwArgs[i[0]]
                         and (fType.kwArgs[i[0]] != Any and i[2]  != Any)
-                        and (fType.kwArgs[i[0]] != float and i[2]  != int)):
+                        and not (fType.kwArgs[i[0]] == float and i[2]  == int)):
                         raise TypeError(f"type {i[2]} can not be applied to argument of type {fType.kwArgs[i[0]]}")
                     if args != "": args += " "
                     args += i[1]
