@@ -1,11 +1,4 @@
-from PySchemeTranspiler.parser import Parser
-from PySchemeTranspiler.builder import Builder
+from PySchemeTranspiler import transpile
 
 with open('testFile.py', 'r') as file:
-    toks = Parser.parseFile(file)
-
-Builder.initState()
-print(Builder.buildFlags)
-for i in toks.body:
-    print(Builder.buildFromNode(i))
-print(Builder.buildFlags)
+    print(transpile(file))
