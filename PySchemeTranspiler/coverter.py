@@ -3,6 +3,7 @@ from typing import TextIO
 from .parser import Parser
 from .builder import Builder
 from .extraCodes import extraC, Arts
+from .coloring import Colors, colorB, colorT
 
 class Converter():
     @staticmethod
@@ -35,7 +36,7 @@ class Converter():
     @staticmethod
     def welcome() -> None:
         Converter.displayArt()
-        print("PySchemeTranspiler v1.0 by Rubin Raithel\n\n")
+        print(colorT("PySchemeTranspiler v1.0 by Rubin Raithel\n\n", Colors.GREEN))
     
     @staticmethod
     def displayArt() -> None:
