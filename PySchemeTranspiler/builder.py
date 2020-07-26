@@ -331,7 +331,9 @@ class _Builder():
                     raise TypeError(f"buildin range takes 1 to 3 arguments, {len(node.args)} provided")
                 elif any([Typer.deduceTypeFromNode(x) != int for x in node.args]):
                     raise TypeError(f"buildin range takes 1 to 3 integers")
-                return CallResolver.normal(node)
+                ret = CallResolver.normal(node)
+                print(ret)
+                return ret
         
         specials: Dict[str, Callable[[Call], Tuple[str, type]]] = {
             'print': CallResolver.print,
@@ -754,7 +756,7 @@ class Typer():
     
     class T():
         def __repr__(self):
-            return str(self.__dict__)
+            return str(f"<{self.type}: {self.__dict__}>")
     
     class Null(T):
         type = "Null"
