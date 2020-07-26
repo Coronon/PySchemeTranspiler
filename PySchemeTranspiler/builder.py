@@ -323,9 +323,19 @@ class _Builder():
                 Builder.buildFlags['PRINT'] = True
                 node.func.id = "PRINT"
                 return CallResolver.normal(node)
+            
+            @staticmethod
+            def range(node: Call) -> Tuple[str, type]:
+                #? This func is set to accept varArgs for easier build in typing -> Check args
+                if not 0 < len(node.args) < 4:
+                    raise TypeError(f"buildin range takes 1 to 3 arguments, {len(node.args)} provided")
+                elif any([Typer.deduceTypeFromNode(x) != int for x in node.args]):
+                    raise TypeError(f"buildin range takes 1 to 3 integers")
+                return CallResolver.normal(node)
         
         specials: Dict[str, Callable[[Call], Tuple[str, type]]] = {
-            'print': CallResolver.print
+            'print': CallResolver.print,
+            'range': CallResolver.range
         }
         
         return specials.get(Builder.buildFromNode(node.func), CallResolver.normal)(node)
@@ -576,7 +586,8 @@ class Builder():
             'str'  : str,
             'list' : list,
             'print': Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None), #? This is a dummy that will be transpiled to 'PRINT'
-            'PRINT': Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None)
+            'PRINT': Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None),
+            'range': Typer.TFunction([int], kwArgs=[], vararg=True, ret=Typer.TList(int)) #? We set this to vararg as we specifically check this case
         }
         Builder.defaultWidenedState = {
             '__if__'              : False, #? Flag for transpiler if in an active if statement
@@ -718,24 +729,24 @@ class _Typer():
     }
     
     @staticmethod
-    def error(node: AST):
+    def error(node: AST) -> None:
         raise TypeError(f"Type of node {node} can not be deduced")
     
     
     @staticmethod
-    def _literlName(node: str):
+    def _literlName(node: str) -> type:
         return _Typer.literals.get(node, _Typer.error)
     
     @staticmethod
-    def Constant(node: Constant):
+    def Constant(node: Constant) -> type:
         return type(node.value)
     
     @staticmethod
-    def Name(node: Name):
+    def Name(node: Name) -> type:
         return Builder.getStateKey(node.id)
         
     @staticmethod
-    def arg(node: arg):
+    def arg(node: arg) -> type:
         return _Typer._literlName(node.annotation.id)
 
 
@@ -760,6 +771,12 @@ class Typer():
             self.vararg = vararg
             self.ret    = ret
     
+    class TList(T):
+        type = "TList"
+
+        def __init__(self, contained: type):
+            self.contained = contained
+    
     switcher: Dict[type, Callable] = {
         Constant : _Typer.Constant,
         Name     : _Typer.Name,
@@ -767,5 +784,5 @@ class Typer():
     }
     
     @staticmethod
-    def deduceTypeFromNode(node: AST):
+    def deduceTypeFromNode(node: AST) -> type:
         return Typer.switcher.get(type(node), _Typer.error)(node)
