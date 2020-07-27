@@ -580,14 +580,18 @@ class Builder():
         """Init the root state to avoid foreward declaration issues
         """
         defaultRootExclusiveState = {
-            'bool' : bool,
-            'int'  : int,
-            'float': float,
-            'str'  : str,
-            'list' : list,
-            'print': Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None), #? This is a dummy that will be transpiled to 'PRINT'
-            'PRINT': Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None),
-            'range': Typer.TFunction([int], kwArgs=[], vararg=True, ret=Typer.TList(int)) #? We set this to vararg as we specifically check this case
+            'bool'  : bool,
+            'int'   : int,
+            'float' : float,
+            'str'   : str,
+            'list'  : list,
+            'print' : Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None), #? This is a dummy that will be transpiled to 'PRINT'
+            'PRINT' : Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None),
+            'range' : Typer.TFunction([int], kwArgs=[], vararg=True, ret=Typer.TList(int)), #? We set this to vararg as we specifically check this case
+            'int'   : Typer.TFunction([TUnion[float, str, bool]],       kwArgs=[], vararg=False, ret=int),
+            'float' : Typer.TFunction([TUnion[int, str, bool]],         kwArgs=[], vararg=False, ret=float),
+            'str'   : Typer.TFunction([TUnion[int, float, bool, list]], kwArgs=[], vararg=False, ret=str),
+            'bool'  : Typer.TFunction([TUnion[int, float, str, list]],  kwArgs=[], vararg=False, ret=bool)
         }
         Builder.defaultWidenedState = {
             '__if__'              : False, #? Flag for transpiler if in an active if statement
@@ -776,6 +780,12 @@ class Typer():
 
         def __init__(self, contained: type):
             self.contained = contained
+    
+    class TUnion(T):
+        type = "TUnion"
+
+        def __init__(self, anyOf: List[type]):
+            self.anyOf = anyOf
     
     switcher: Dict[type, Callable] = {
         Constant : _Typer.Constant,
