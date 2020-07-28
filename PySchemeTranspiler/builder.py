@@ -65,11 +65,7 @@ class _Builder():
                 args += f"#:{node.args.args[i].arg} [{node.args.args[i].arg} {argV}]"
                 
                 aType = Typer.deduceTypeFromNode(node.args.args[i])
-                #Todo: Add type compatibility checker to avoid spreading these all over the code
-                if (
-                    aType != argT
-                    and not (aType == float and argT == int)
-                    ):
+                if not Typer.isTypeCompatible(aType, argT):
                     raise TypeError(
                         f"annotaion type {aType} and default type {argT} are incompatible for argument '{node.args.args[i].arg}' of {name}"
                         )
@@ -101,9 +97,6 @@ class _Builder():
         body = ""
         for i in node.body:
             body += Builder.buildFromNode(i)
-            #! We dont support more than one return at the moment
-            if isinstance(i, Return):
-                break
         
         Builder.popState()
         return f'(define ({name} {args}) {body})'
@@ -202,11 +195,10 @@ class _Builder():
             if Builder.inStateLocal(target.id):
                 if Builder.config['TYPES_STRICT']:
                     #? Strict mode
-                    if (sType := Builder.getStateKeyLocal(target.id)) != vType:
-                        if not (sType == int and vType == float): 
-                            raise TypeError(f"Type {sType} and {vType} are incompatible for '{target.id}'")
-                        #? Allow automatic conversion from int->float but NOT float->int (data loss)
-                        Builder.setStateKey(target.id, float)
+                    if not Typer.isTypeCompatible((sType := Builder.getStateKeyLocal(target.id)), vType):
+                        raise TypeError(f"Type {sType} and {vType} are incompatible for '{target.id}'")
+                    #? Allow automatic conversion between compatible types that dont cause data loss
+                    Builder.setStateKey(target.id, vType)
                 else:
                     #? Unstrict mode
                     Builder.setStateKey(target.id, vType)
@@ -281,10 +273,7 @@ class _Builder():
                 # Check default argument types match
                 args = ""
                 for i in range(len(fType.args)):
-                    if (
-                        argListDef[i][1] != fType.args[i] 
-                        and (fType.args[i] != Any and argListDef[i][1] != Any)
-                        and not (fType.args[i] == float and argListDef[i][1] == int)):
+                    if not Typer.isTypeCompatible(argListDef[i][1], fType.args[i]):
                         raise TypeError(f"type {argListDef[i][1]} can not be applied to argument of type {fType.args[i]}")
                 
                 for arg in argListDef:
@@ -305,10 +294,7 @@ class _Builder():
                 for i in argListKey:
                     if i[0] not in fType.kwArgs:
                         raise TypeError(f"'{i[0]}' is an invalid keyword argument for {fName}")
-                    if (
-                        i[2] != fType.kwArgs[i[0]]
-                        and (fType.kwArgs[i[0]] != Any and i[2]  != Any)
-                        and not (fType.kwArgs[i[0]] == float and i[2]  == int)):
+                    if not Typer.isTypeCompatible(i[2], fType.kwArgs[i[0]]):
                         raise TypeError(f"type {i[2]} can not be applied to argument of type {fType.kwArgs[i[0]]}")
                     if args != "": args += " "
                     args += i[1]
@@ -588,10 +574,10 @@ class Builder():
             'print' : Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None), #? This is a dummy that will be transpiled to 'PRINT'
             'PRINT' : Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None),
             'range' : Typer.TFunction([int], kwArgs=[], vararg=True, ret=Typer.TList(int)), #? We set this to vararg as we specifically check this case
-            'int'   : Typer.TFunction([TUnion[float, str, bool]],       kwArgs=[], vararg=False, ret=int),
-            'float' : Typer.TFunction([TUnion[int, str, bool]],         kwArgs=[], vararg=False, ret=float),
-            'str'   : Typer.TFunction([TUnion[int, float, bool, list]], kwArgs=[], vararg=False, ret=str),
-            'bool'  : Typer.TFunction([TUnion[int, float, str, list]],  kwArgs=[], vararg=False, ret=bool)
+            'int'   : Typer.TFunction([Typer.TUnion([float, str, bool])],       kwArgs=[], vararg=False, ret=int),
+            'float' : Typer.TFunction([Typer.TUnion([int, str])],         kwArgs=[], vararg=False, ret=float),
+            'str'   : Typer.TFunction([Typer.TUnion([int, float, bool, list])], kwArgs=[], vararg=False, ret=str),
+            'bool'  : Typer.TFunction([Typer.TUnion([int, float, str, list])],  kwArgs=[], vararg=False, ret=bool)
         }
         Builder.defaultWidenedState = {
             '__if__'              : False, #? Flag for transpiler if in an active if statement
@@ -759,6 +745,9 @@ class Typer():
     class T():
         def __repr__(self):
             return str(f"<{self.type}: {self.__dict__}>")
+        
+        def __eq__(self, value: Typer.T):
+                return self.__dict__ == value.__dict__
     
     class Null(T):
         type = "Null"
@@ -786,6 +775,9 @@ class Typer():
 
         def __init__(self, anyOf: List[type]):
             self.anyOf = anyOf
+        
+        def __repr__(self):
+            return str(f"<{self.type}: {self.anyOf}>")
     
     switcher: Dict[type, Callable] = {
         Constant : _Typer.Constant,
@@ -796,3 +788,44 @@ class Typer():
     @staticmethod
     def deduceTypeFromNode(node: AST) -> type:
         return Typer.switcher.get(type(node), _Typer.error)(node)
+    
+    @staticmethod
+    def isTypeCompatible(type1: type, type2: type) -> bool:
+        """Check if two types are compatible
+
+        Arguments:
+            type1 {type} -- Type to be applied
+            type2 {type} -- Type to be applied to
+
+        Returns:
+            bool -- Types are compatible
+        """
+        #? Types are equal
+        if type1 == type2:
+            return True
+        
+        #? One or both types are Any
+        if type1 == Any or type2 == Any:
+            return True
+        
+        #? TUnion
+        if isinstance(type1, Typer.TUnion):
+            if type2 in type1.anyOf:
+                return True
+            elif type2 == int and float in type1.anyOf:
+                return True
+            
+            return False
+        elif isinstance(type2, Typer.TUnion):
+            if type1 in type2.anyOf:
+                return True
+            elif type1 == int and float in type2.anyOf:
+                return True
+            
+            return False
+        
+        #? Number types (reject data loss from float->int)
+        if type1 == int and type2 == float:
+            return True
+        
+        return False
