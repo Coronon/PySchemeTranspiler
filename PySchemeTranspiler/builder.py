@@ -575,7 +575,7 @@ class Builder():
             'PRINT' : Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None),
             'range' : Typer.TFunction([int], kwArgs=[], vararg=True, ret=Typer.TList(int)), #? We set this to vararg as we specifically check this case
             'int'   : Typer.TFunction([Typer.TUnion([float, str, bool])],       kwArgs=[], vararg=False, ret=int),
-            'float' : Typer.TFunction([Typer.TUnion([int, str])],         kwArgs=[], vararg=False, ret=float),
+            'float' : Typer.TFunction([Typer.TUnion([int, str, bool])],         kwArgs=[], vararg=False, ret=float),
             'str'   : Typer.TFunction([Typer.TUnion([int, float, bool, list])], kwArgs=[], vararg=False, ret=str),
             'bool'  : Typer.TFunction([Typer.TUnion([int, float, str, list])],  kwArgs=[], vararg=False, ret=bool)
         }
