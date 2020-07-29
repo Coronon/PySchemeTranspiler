@@ -33,6 +33,8 @@ from ast import (
     arg
     )
 
+from .exceptions import throw
+
 NUMBER_TYPES = [int, float]
 SEPERATOR = '\n'
 
@@ -537,7 +539,7 @@ class Builder():
             str -- Compiled sourceCode
         """
         #* Switch of all Nodes supported
-        ret = Builder.switcher.get(type(node), _Builder.error)(node)
+        ret = Builder._buildFromNode(node)
         if isinstance(ret, tuple):
             return ret[0]
         
@@ -555,11 +557,27 @@ class Builder():
             Any -- Type of compiled object (for internal use)
         """
         #* Switch of all Nodes supported
-        ret = Builder.switcher.get(type(node), _Builder.error)(node)
+        ret = Builder._buildFromNode(node)
         if isinstance(ret, tuple):
             return ret
         
         return ret, Typer.Null()
+    
+    @staticmethod
+    def _buildFromNode(node: AST) -> Tuple[str, Any]:
+        """Internally used to unify error handling `DO NOT USE EXTERNALLY`
+
+        Raises:
+            ConversionException -- Exception caught in transpilation
+            
+        Returns:
+            str -- Compiled sourceCode
+            Any -- Type of compiled object (for internal use)
+        """
+        try:
+            return Builder.switcher.get(type(node), _Builder.error)(node)
+        except Exception as e:
+            throw(e, node)
     
     @staticmethod
     def initState() -> None:
