@@ -2,6 +2,15 @@ class extraC():
     PRINT = '(define (PRINT . args) (for-each (lambda (x) (display x) (display " ")) args)(newline))'
 
     NOT_EQUAL = "(define (!= a b) (not (equal? a b)))"
+    
+    INPUT = "(define (input prompt) (display prompt)(read-line))"
+
+class FlagRequirements():
+    requirements = {
+        'PRINT'     : set(),
+        'NOT_EQUAL' : set(),
+        'INPUT'     : set()
+    }
 
 class Arts():
     dancing = r"""  ____   __   __ ____      ____   _   _  U _____ u  __  __   _____    ____        _      _   _    ____     ____              _     U _____ u   ____     

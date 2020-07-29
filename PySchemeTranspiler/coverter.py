@@ -1,9 +1,9 @@
-from typing import TextIO
+from typing import TextIO, Dict, Set
 
 from .parser import Parser
 from .builder import Builder
 from .shared import Shared
-from .extraCodes import extraC, Arts
+from .extraCodes import extraC, FlagRequirements, Arts
 from .coloring import Colors, colorB, colorT
 
 class Converter():
@@ -26,18 +26,29 @@ class Converter():
             userCode += f"{Builder.buildFromNode(i)}\n"
         
         #* Edit code according to build flags    
-        buildFlags = Builder.buildFlags
+        buildFlags = Converter.compileBuildFlags(Builder.buildFlags)
         
-        if buildFlags['PRINT']:
+        if 'PRINT' in buildFlags:
             compilerCode += f"{extraC.PRINT}\n"
-        if buildFlags['NOT_EQUAL']:
+        if 'NOT_EQUAL' in buildFlags:
             compilerCode += f"{extraC.NOT_EQUAL}\n"
+        if 'INPUT' in buildFlags:
+            compilerCode += f"{extraC.INPUT}\n"
         
         if compilerCode == "":
-            return userCode
+            return userCode.strip()
         
         
         return f"{compilerCode}\n{userCode}".strip()
+    
+    @staticmethod
+    def compileBuildFlags(flags: Dict[str, bool]) -> Set[str]:
+        ret = set()
+        for flag, active in flags.items():
+            if active:
+                ret = ret | {flag} | FlagRequirements.requirements[flag]
+        
+        return ret
     
     @staticmethod
     def welcome() -> None:
