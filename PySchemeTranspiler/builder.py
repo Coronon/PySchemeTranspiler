@@ -30,6 +30,9 @@ from ast import (
     LtE,
     Gt,
     GtE,
+    Subscript,
+    List,
+    AnnAssign,
     arg
     )
 
@@ -185,7 +188,7 @@ class _Builder():
         return "/"
     
     @staticmethod
-    def Name(node: Name) -> str:
+    def Name(node: Name) -> Tuple[str, type]:
         return node.id, Builder.getStateKey(node.id)
     
     @staticmethod
@@ -193,6 +196,10 @@ class _Builder():
         ret = ""
         for target in node.targets:
             value, vType = Builder.buildFromNodeType(node.value)
+            
+            print(f"Restricted->{vType}?", Typer.isRestrictedType(vType))
+            if Typer.isRestrictedType(vType):
+                raise TypeError(f"restricted type {vType} may only be used in an annotated assign")
             
             if Builder.inStateLocal(target.id):
                 if Builder.config['TYPES_STRICT']:
@@ -380,7 +387,7 @@ class _Builder():
         Builder.setStateKey('__ifBody__', True)
         for elem in node.body:
             #? Move possible definitions before rootIf in current scope
-            if isinstance(elem, Assign):
+            if isinstance(elem, Assign) or isinstance(elem, AnnAssign):
                 handleAssign(elem)
             
             body += Builder.buildFromNode(elem)
@@ -403,7 +410,7 @@ class _Builder():
                 Builder.setStateKey('__ifBody__', True)
                 for elem in node.orelse:
                     #? Move possible definitions before rootIf in current scope
-                    if isinstance(elem, Assign):
+                    if isinstance(elem, Assign) or isinstance(elem, AnnAssign):
                         handleAssign(elem)
                     
                     body += Builder.buildFromNode(elem)
@@ -497,8 +504,58 @@ class _Builder():
     @staticmethod
     def GtE(node: GtE) -> str:
         return ">="
-   
+
+    @staticmethod
+    def List(node: List) -> Tuple[str, type]:
+        containingT = Typer.TPending()
+        elements = []
+        for entry in node.elts:
+            value, vType = Builder.buildFromNodeType(entry)
+            elements.append(value)
+            containingT = Typer.mergeTypes(containingT, vType)
+
+        if not elements:
+            return "(list)", Typer.TList(containingT)
+        
+        return f"(list {' '.join(elements)})", Typer.TList(containingT)
     
+    @staticmethod
+    def AnnAssign(node: AnnAssign) -> str:
+        name = node.target.id
+        
+        if not node.value:
+            raise ValueError(f"variable '{name}' must be initialized")
+        
+        value, vType = Builder.buildFromNodeType(node.value)
+        aType = Typer.deduceTypeFromNode(node)
+        if not Typer.isTypeCompatible(vType, aType):
+            raise TypeError(f"can not assign value of type {vType} to variable with type annotation of {aType}")
+        
+        if Builder.inStateLocal(name):
+            if Builder.config['TYPES_STRICT']:
+                #? Strict mode
+                if not Typer.isTypeCompatible((sType := Builder.getStateKeyLocal(name)), aType):
+                    raise TypeError(f"Type {sType} and {aType} are incompatible for '{name}'")
+                #? Allow automatic conversion between compatible types that dont cause data loss
+                Builder.setStateKey(name, aType)
+            else:
+                #? Unstrict mode
+                Builder.setStateKey(name, aType)
+                
+            return f"(set! {name} {value})"
+        else:
+            Builder.setStateKey(name, aType)
+            if Builder.getStateKeyLocal('__assignSkipValue__'):
+                #? Some component doesnt want us to include the value
+                return f"(define {name} void)"
+            else:
+                return f"(define {name} {value})"
+    
+    #Todo: implement for lists    
+    # @staticmethod
+    # def Subscript(node: Subscript) -> Tuple[str, type]:
+    #     pass
+
 class Builder():
     Interpreter = Callable[[AST], str]
     switcher: Dict[type, Callable] = {
@@ -528,6 +585,8 @@ class Builder():
         LtE         : _Builder.LtE,
         Gt          : _Builder.Gt,
         GtE         : _Builder.GtE,
+        List        : _Builder.List,
+        AnnAssign   : _Builder.AnnAssign,
         keyword     : _Builder.keyword
     }
     
@@ -538,7 +597,8 @@ class Builder():
     }
     
     config = {
-        'TYPES_STRICT' : True
+        'TYPES_STRICT' : True,
+        'DEBUG'        : False
     }
     
     defaultWidenedState = {}
@@ -592,6 +652,9 @@ class Builder():
             str -- Compiled sourceCode
             Any -- Type of compiled object (for internal use)
         """
+        if Builder.config['DEBUG']:
+            return Builder.switcher.get(type(node), _Builder.error)(node)
+        
         try:
             return Builder.switcher.get(type(node), _Builder.error)(node)
         except Exception as e:
@@ -602,11 +665,12 @@ class Builder():
         """Init the root state to avoid foreward declaration issues
         """
         defaultRootExclusiveState = {
-            'bool'  : bool,
-            'int'   : int,
-            'float' : float,
-            'str'   : str,
-            'list'  : list,
+            #? All primitive types are shadowed by their corresponding caster functionTypes!
+            # 'bool'  : bool,
+            # 'int'   : int,
+            # 'float' : float,
+            # 'str'   : str,
+            # 'list'  : list,
             'print' : Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None), #? This is a dummy that will be transpiled to 'PRINT'
             'PRINT' : Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None),
             'input' : Typer.TFunction([str], kwArgs=[], vararg=False, ret=str),
@@ -761,7 +825,7 @@ class _Typer():
     
     
     @staticmethod
-    def _literlName(node: str) -> type:
+    def _literalName(node: str) -> type:
         return _Typer.literals.get(node, _Typer.error)
     
     @staticmethod
@@ -774,7 +838,37 @@ class _Typer():
         
     @staticmethod
     def arg(node: arg) -> type:
-        return _Typer._literlName(node.annotation.id)
+        return _Typer._literalAnnotation(node.annotation)
+    
+    @staticmethod
+    def _literalSubscript(node: Subscript) -> type:
+        class LiteralSubscriptResolver():
+            @staticmethod
+            def error(node: Subscript) -> type:
+                raise TypeError(f"subscript-type {node.value.id} is not supported")
+            
+            @staticmethod
+            def List(node: Subscript) -> type:
+                return Typer.TList(_Typer._literalAnnotation(node.slice.value))
+        
+        specials: Dict[str, Callable[[Call], type]] = {
+            'List': LiteralSubscriptResolver.List,
+        }
+        
+        return specials.get(node.value.id, LiteralSubscriptResolver.error)(node)
+
+    @staticmethod
+    def _literalAnnotation(node: AST) -> type:
+        if isinstance(node, Name):
+            return _Typer._literalName(node.id)
+        elif isinstance(node, Subscript):   
+            return _Typer._literalSubscript(node)
+        else:
+            raise TypeError(f"node of type {type(node)} is not supported for arg annotations")
+    
+    @staticmethod
+    def AnnAssign(node: AnnAssign) -> type:
+        return _Typer._literalAnnotation(node.annotation)
 
 
 class Typer():
@@ -784,7 +878,7 @@ class Typer():
             return str(f"<{self.type}: {self.__dict__}>")
         
         def __eq__(self, value: Typer.T):
-                return self.__dict__ == value.__dict__
+                return isinstance(value, Typer.T) and self.__dict__ == value.__dict__
     
     class Null(T):
         type = "Null"
@@ -806,6 +900,9 @@ class Typer():
 
         def __init__(self, contained: type):
             self.contained = contained
+        
+        def __repr__(self):
+            return str(f"<{self.type}: {self.contained}>")
     
     class TUnion(T):
         type = "TUnion"
@@ -825,11 +922,20 @@ class Typer():
         def __repr__(self):
             return str(f"<{self.type}: {self.optOf}>")
     
+    class TPending(T):
+        type = "TPending"
+        
+        def __repr__(self):
+            return str(f"<{self.type}...>")
+    
     switcher: Dict[type, Callable] = {
-        Constant : _Typer.Constant,
-        Name     : _Typer.Name,
-        arg      : _Typer.arg
+        Constant  : _Typer.Constant,
+        Name      : _Typer.Name,
+        AnnAssign : _Typer.AnnAssign,
+        arg       : _Typer.arg
     }
+    
+    restricted: List[type] = [list, dict, TList]
     
     @staticmethod
     def deduceTypeFromNode(node: AST) -> type:
@@ -878,8 +984,65 @@ class Typer():
             
             return False
         
+        #? TList
+        if isinstance(type1, Typer.TList):
+            if isinstance(type2, Typer.TList) and Typer.isTypeCompatible(type1.contained, type2.contained):
+                return True
+            
+            return False
+        elif isinstance(type2, Typer.TList):
+            return False
+        
+        #? TPending
+        if isinstance(type1, Typer.TPending):
+            if not isinstance(type2, Typer.TPending):
+                return True
+            
+            return False
+        elif isinstance(type2, Typer.TPending):
+            if not isinstance(type1, Typer.TPending):
+                return True
+            
+            return False
+        
         #? Number types (reject data loss from float->int)
         if type1 == int and type2 == float:
             return True
         
         return False
+
+    @staticmethod
+    def isRestrictedType(test: type) -> bool:
+        """Check if a type is restricted and can only be assigned in an AnnAssign
+
+        Arguments:
+            test {type} -- Type to check
+
+        Returns:
+            bool -- Type restricted
+        """
+        return test in Typer.restricted or type(test) in Typer.restricted
+     
+    @staticmethod
+    def mergeTypes(type1: type, type2: type) -> type:
+        """Merge two types into one and avoid data loss
+
+        Arguments:
+            type1 {type} -- Left type of the merge (original type)
+            type2 {type} -- Right type of the merge (new type)
+
+        Returns:
+            type -- Merged type
+        """
+        if type1 == type2:
+            return type1
+        
+        mergers = [type1, type2]
+        if int in mergers and float in mergers:
+            return float
+        
+        if isinstance(type1, Typer.TPending):
+            return type2
+        
+        raise TypeError(f"can not merge types {type1} and {type2}")
+         
