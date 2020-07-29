@@ -316,14 +316,31 @@ class _Builder():
             def range(node: Call) -> Tuple[str, type]:
                 #? This func is set to accept varArgs for easier build in typing -> Check args
                 if not 0 < len(node.args) < 4:
-                    raise TypeError(f"buildin range takes 1 to 3 arguments, {len(node.args)} provided")
-                elif any([Typer.deduceTypeFromNode(x) != int for x in node.args]):
-                    raise TypeError(f"buildin range takes 1 to 3 integers")
+                    raise TypeError(f"builtin range takes 1 to 3 arguments, {len(node.args)} provided")
+                elif any([not Typer.isTypeCompatible(Typer.deduceTypeFromNode(x), int) for x in node.args]):
+                    raise TypeError(f"builtin range takes 1 to 3 integers")
                 return CallResolver.normal(node)
+
+            @staticmethod
+            def input(node: Call) -> Tuple[str, type]:
+                Builder.buildFlags['INPUT'] = True
+                
+                if not len(node.args) < 2:
+                    raise TypeError(f"builtin input takes 0 to 1 arguments, {len(node.args)} provided")
+                elif any([not Typer.isTypeCompatible(Typer.deduceTypeFromNode(x), str) for x in node.args]):
+                    raise TypeError(f"builtin input takes 0 to 1 strings")
+                
+                if not node.args:
+                    node.args.append(Constant(value="", kind=None))
+                
+                return CallResolver.normal(node)
+                    
+
         
         specials: Dict[str, Callable[[Call], Tuple[str, type]]] = {
             'print': CallResolver.print,
-            'range': CallResolver.range
+            'range': CallResolver.range,
+            'input': CallResolver.input
         }
         
         return specials.get(Builder.buildFromNode(node.func), CallResolver.normal)(node)
@@ -516,7 +533,8 @@ class Builder():
     
     buildFlags = {
         'PRINT'     : False, # Include PRINT function
-        'NOT_EQUAL' : False  # Include != function
+        'NOT_EQUAL' : False, # Include != function
+        'INPUT'     : False  # Include input function
     }
     
     config = {
@@ -591,6 +609,7 @@ class Builder():
             'list'  : list,
             'print' : Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None), #? This is a dummy that will be transpiled to 'PRINT'
             'PRINT' : Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None),
+            'input' : Typer.TFunction([str], kwArgs=[], vararg=False, ret=str),
             'range' : Typer.TFunction([int], kwArgs=[], vararg=True, ret=Typer.TList(int)), #? We set this to vararg as we specifically check this case
             'int'   : Typer.TFunction([Typer.TUnion([float, str, bool])],       kwArgs=[], vararg=False, ret=int),
             'float' : Typer.TFunction([Typer.TUnion([int, str, bool])],         kwArgs=[], vararg=False, ret=float),
@@ -797,6 +816,15 @@ class Typer():
         def __repr__(self):
             return str(f"<{self.type}: {self.anyOf}>")
     
+    class TOptional(T):
+        type = "TOptional"
+
+        def __init__(self, optOf: type):
+            self.optOf = optOf
+        
+        def __repr__(self):
+            return str(f"<{self.type}: {self.optOf}>")
+    
     switcher: Dict[type, Callable] = {
         Constant : _Typer.Constant,
         Name     : _Typer.Name,
@@ -828,16 +856,24 @@ class Typer():
         
         #? TUnion
         if isinstance(type1, Typer.TUnion):
-            if type2 in type1.anyOf:
-                return True
-            elif type2 == int and float in type1.anyOf:
+            if all([Typer.isTypeCompatible(x, type2) for x in type1.anyOf]):
                 return True
             
             return False
         elif isinstance(type2, Typer.TUnion):
-            if type1 in type2.anyOf:
+            if any([Typer.isTypeCompatible(type1, x) for x in type2.anyOf]):
                 return True
-            elif type1 == int and float in type2.anyOf:
+            
+            return False
+        
+        #? TOptional
+        if isinstance(type1, Typer.TOptional):
+            if isinstance(type2, Typer.TOptional) and Typer.isTypeCompatible(type1.optOf, type2.optOf):
+                return True
+            
+            return False
+        elif isinstance(type2, Typer.TOptional):
+            if Typer.isTypeCompatible(type1, type2.optOf):
                 return True
             
             return False
