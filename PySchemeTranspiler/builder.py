@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Dict, List, Tuple, Callable, Any
+from typing import Dict, List, Tuple, Union, Callable, Any
 
 from ast import (
     AST,
@@ -33,6 +33,8 @@ from ast import (
     Subscript,
     List,
     AnnAssign,
+    Index,
+    Slice,
     arg
     )
 
@@ -551,10 +553,47 @@ class _Builder():
             else:
                 return f"(define {name} {value})"
     
-    #Todo: implement for lists    
-    # @staticmethod
-    # def Subscript(node: Subscript) -> Tuple[str, type]:
-    #     pass
+    @staticmethod
+    def Subscript(node: Subscript) -> Tuple[str, type]:
+        name, nType = Builder.buildFromNodeType(node.value)
+        
+        class SubscriptResolver():
+            @staticmethod
+            def error(name: str, nType: type, slice: Any):
+                raise TypeError(f"value of type {nType} can not be subscripted")
+            
+            @staticmethod
+            def TList(name: str, nType: type, slice: Union[Index, Slice]) -> Tuple[str, type]:
+                if isinstance(slice, Index):
+                    index = Builder.buildFromNode(slice)
+                    try:
+                        index = int(Builder.buildFromNode(slice))
+                        
+                        if index < 0:
+                            index = f"(- (length r) {-index})"
+                        
+                    except ValueError:
+                        raise TypeError(f"instance of type {type(index)} can not be used to index into a list")
+                    
+                    return f"(list-ref {name} {index})", nType
+                elif isinstance(slice, Slice):
+                    raise NotImplementedError("Advanced slicing is not yet implemented for lists")
+                else:
+                    raise TypeError(f"type {type(slice)} can not be used to slice a list")
+        
+        types: Dict[str, Callable[[Call], Tuple[str, type]]] = {
+            Typer.TList: SubscriptResolver.TList
+        }
+        
+        return types.get(type(nType), SubscriptResolver.error)(name, nType, node.slice)
+    
+    @staticmethod
+    def Index(node: Index) -> str:
+        if isinstance(node.value, Name) or isinstance(node.value, Constant) or isinstance(node.value, UnaryOp):
+            return Builder.buildFromNode(node.value)
+        else:
+            raise TypeError(f"value of type {type(node.value)} can not be used as an index")
+                
 
 class Builder():
     Interpreter = Callable[[AST], str]
@@ -587,6 +626,8 @@ class Builder():
         GtE         : _Builder.GtE,
         List        : _Builder.List,
         AnnAssign   : _Builder.AnnAssign,
+        Subscript   : _Builder.Subscript,
+        Index       : _Builder.Index,
         keyword     : _Builder.keyword
     }
     
