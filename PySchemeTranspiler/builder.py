@@ -35,6 +35,7 @@ from ast import (
     AnnAssign,
     Index,
     Slice,
+    Attribute,
     arg
     )
 
@@ -256,6 +257,7 @@ class _Builder():
     @staticmethod
     def Call(node: Call) -> Tuple[str, type]:
         class CallResolver():
+            #* FUNCTIONS
             @staticmethod
             def normal(node: Call) -> Tuple[str, type]:
                 #* Type lookup
@@ -343,17 +345,45 @@ class _Builder():
                     node.args.append(Constant(value="", kind=None))
                 
                 return CallResolver.normal(node)
-                    
 
-        
-        specials: Dict[str, Callable[[Call], Tuple[str, type]]] = {
-            'print': CallResolver.print,
-            'range': CallResolver.range,
-            'input': CallResolver.input
-        }
-        
-        return specials.get(Builder.buildFromNode(node.func), CallResolver.normal)(node)
+            #* ATTRIBUTES
 
+            @staticmethod
+            def TList(name: str, nType: type, attName: str) -> Tuple[str, type]:
+                def append(name: str, nType: type):
+                    pass
+        
+        if not isinstance(node.func, Attribute):
+            specials: Dict[str, Callable[[Call], Tuple[str, type]]] = {
+                'print': CallResolver.print,
+                'range': CallResolver.range,
+                'input': CallResolver.input
+            }
+            
+            return specials.get(Builder.buildFromNode(node.func), CallResolver.normal)(node)
+        else:
+            def fetchInfoFromAttribute(node: Attribute) -> Tuple[str, type, str]:
+                """Get basic info from Attribute
+
+                Arguments:
+                    node {Attribute} -- Attribute to analyze
+
+                Returns:
+                    Tuple[str, type, str] -- VariableName, VariableType, AttributeCallName
+                """
+                if not isinstance(node.value, Name):
+                    raise TypeError(f"node of type {type(node.value)} may not use attributes")
+                
+                name, nType = Builder.buildFromNodeType(node.value)
+                return name, nType, node.attr
+
+            info = fetchInfoFromAttribute(node.func)
+            
+            types: Dict[str, Callable[[Call], Tuple[str, type]]] = {
+                'TList': CallResolver.print,
+            }
+            
+            
     @staticmethod
     def keyword(node: Keyword) -> Tuple[str, type]:
         value, vType = Builder.buildFromNodeType(node.value)
@@ -575,7 +605,7 @@ class _Builder():
                     except ValueError:
                         raise TypeError(f"instance of type {type(index)} can not be used to index into a list")
                     
-                    return f"(list-ref {name} {index})", nType
+                    return f"(list-ref {name} {index})", nType.contained
                 elif isinstance(slice, Slice):
                     raise NotImplementedError("Advanced slicing is not yet implemented for lists")
                 else:
