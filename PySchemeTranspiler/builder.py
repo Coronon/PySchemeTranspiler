@@ -593,8 +593,12 @@ class _Builder():
             return Builder.buildFromNode(node.value)
         else:
             raise TypeError(f"value of type {type(node.value)} can not be used as an index")
-                
-
+    
+    #TODO implement advanced slicing
+    # @staticmethod
+    # def Slice(node: Slice) -> str:          
+    #     pass
+    
 class Builder():
     Interpreter = Callable[[AST], str]
     switcher: Dict[type, Callable] = {
