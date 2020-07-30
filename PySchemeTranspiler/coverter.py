@@ -28,6 +28,8 @@ class Converter():
         #* Edit code according to build flags    
         buildFlags = Converter.compileBuildFlags(Builder.buildFlags)
         
+        if 'GROWABLE_VECTOR' in buildFlags:
+            compilerCode += f"{extraC.GROWABLE_VECTOR}\n"
         if 'PRINT' in buildFlags:
             compilerCode += f"{extraC.PRINT}\n"
         if 'NOT_EQUAL' in buildFlags:

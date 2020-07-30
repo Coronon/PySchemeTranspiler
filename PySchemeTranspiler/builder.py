@@ -200,29 +200,64 @@ class _Builder():
         for target in node.targets:
             value, vType = Builder.buildFromNodeType(node.value)
             
-            print(f"Restricted->{vType}?", Typer.isRestrictedType(vType))
-            if Typer.isRestrictedType(vType):
-                raise TypeError(f"restricted type {vType} may only be used in an annotated assign")
-            
-            if Builder.inStateLocal(target.id):
-                if Builder.config['TYPES_STRICT']:
-                    #? Strict mode
-                    if not Typer.isTypeCompatible((sType := Builder.getStateKeyLocal(target.id)), vType):
-                        raise TypeError(f"Type {sType} and {vType} are incompatible for '{target.id}'")
-                    #? Allow automatic conversion between compatible types that dont cause data loss
-                    Builder.setStateKey(target.id, vType)
-                else:
-                    #? Unstrict mode
-                    Builder.setStateKey(target.id, vType)
+            if isinstance(target, Subscript):
+                name, nType = Builder.buildFromNodeType(target.value)
+        
+                class AssignSubscriptResolver():
+                    @staticmethod
+                    def error(name: str, nType: type, slice: Any):
+                        raise TypeError(f"value of type {nType} can not be subscripted")
                     
-                ret += f"(set! {target.id} {value})"
+                    @staticmethod
+                    def TList(name: str, nType: type, slice: Union[Index, Slice]) -> str:
+                        if isinstance(slice, Index):
+                            index = Builder.buildFromNode(slice)
+                            try:
+                                index = int(Builder.buildFromNode(slice))
+                                
+                                if index < 0:
+                                    index = f"(- (length r) {-index})"
+                                
+                            except ValueError:
+                                raise TypeError(f"instance of type {type(index)} can not be used to index into a list")
+                            
+                            if not Typer.isTypeCompatible(vType, nType.contained):
+                                raise TypeError(f"element of type {vType} can not be appended to list containing type {nType.contained}")
+                            
+                            return f"(safe-gvector-set! {name} {index} {value})"
+                        elif isinstance(slice, Slice):
+                            raise NotImplementedError("Advanced slicing is not yet implemented for lists")
+                        else:
+                            raise TypeError(f"type {type(slice)} can not be used to slice a list")
+                
+                types: Dict[str, Callable[[Call], str]] = {
+                    Typer.TList: AssignSubscriptResolver.TList
+                }
+                
+                return types.get(type(nType), AssignSubscriptResolver.error)(name, nType, target.slice)
             else:
-                Builder.setStateKey(target.id, vType)
-                if Builder.getStateKeyLocal('__assignSkipValue__'):
-                    #? Some component doesnt want us to include the value
-                    ret += f"(define {target.id} void)"
+                if Builder.inStateLocal(target.id):
+                    if Builder.config['TYPES_STRICT']:
+                        #? Strict mode
+                        if not Typer.isTypeCompatible((sType := Builder.getStateKeyLocal(target.id)), vType):
+                            raise TypeError(f"Type {sType} and {vType} are incompatible for '{target.id}'")
+                        #? Allow automatic conversion between compatible types that dont cause data loss
+                        Builder.setStateKey(target.id, vType)
+                    else:
+                        #? Unstrict mode
+                        Builder.setStateKey(target.id, vType)
+                        
+                    ret += f"(set! {target.id} {value})"
                 else:
-                    ret += f"(define {target.id} {value})"
+                    if Typer.isRestrictedType(vType):
+                        raise TypeError(f"restricted type {vType} may only be used in an annotated assign")
+                    
+                    Builder.setStateKey(target.id, vType)
+                    if Builder.getStateKeyLocal('__assignSkipValue__'):
+                        #? Some component doesnt want us to include the value
+                        ret += f"(define {target.id} void)"
+                    else:
+                        ret += f"(define {target.id} {value})"
         
         return ret
     
@@ -349,9 +384,25 @@ class _Builder():
             #* ATTRIBUTES
 
             @staticmethod
-            def TList(name: str, nType: type, attName: str) -> Tuple[str, type]:
-                def append(name: str, nType: type):
-                    pass
+            def TList(node: Call, name: str, nType: Typer.TList, attr: str) -> Tuple[str, type]:
+                def error(node: Call, name: str, nType: Typer.TList):
+                    raise AttributeError(f"no such attribute function on type list")
+                
+                def append(node: Call, name: str, nType: Typer.TList) -> Tuple[str, type]:
+                    if not 0 < (args := len(node.args)) < 2:
+                        raise ValueError(f"append on list takes 1 type-compatible argument, {args} provided")
+                    
+                    value, vType = Builder.buildFromNodeType(node.args[0])
+                    if not Typer.isTypeCompatible(vType, nType.contained):
+                        raise TypeError(f"element of type {vType} can not be appended to list containing type {nType.contained}")
+                    
+                    return f"(gvector-add! {name} {value})"
+                
+                attributes: Dict[str, Callable[[Call], Tuple[str, type]]] = {
+                    'append': append,
+                }
+                
+                return attributes.get(attr, error)(node, name, nType)
         
         if not isinstance(node.func, Attribute):
             specials: Dict[str, Callable[[Call], Tuple[str, type]]] = {
@@ -362,6 +413,9 @@ class _Builder():
             
             return specials.get(Builder.buildFromNode(node.func), CallResolver.normal)(node)
         else:
+            def error(node: Call, name: str, nType: type, attr: str):
+                raise TypeError(f"object of type {nType} does not have any attribute functions")
+            
             def fetchInfoFromAttribute(node: Attribute) -> Tuple[str, type, str]:
                 """Get basic info from Attribute
 
@@ -377,12 +431,13 @@ class _Builder():
                 name, nType = Builder.buildFromNodeType(node.value)
                 return name, nType, node.attr
 
-            info = fetchInfoFromAttribute(node.func)
+            name, nType, attr = fetchInfoFromAttribute(node.func)
             
             types: Dict[str, Callable[[Call], Tuple[str, type]]] = {
-                'TList': CallResolver.print,
+                Typer.TList: CallResolver.TList,
             }
             
+            return types.get(type(nType), error)(node, name, nType, attr)
             
     @staticmethod
     def keyword(node: Keyword) -> Tuple[str, type]:
@@ -539,6 +594,7 @@ class _Builder():
 
     @staticmethod
     def List(node: List) -> Tuple[str, type]:
+        Builder.buildFlags['GROWABLE_VECTOR'] = True
         containingT = Typer.TPending()
         elements = []
         for entry in node.elts:
@@ -547,9 +603,9 @@ class _Builder():
             containingT = Typer.mergeTypes(containingT, vType)
 
         if not elements:
-            return "(list)", Typer.TList(containingT)
+            return "(gvector)", Typer.TList(containingT)
         
-        return f"(list {' '.join(elements)})", Typer.TList(containingT)
+        return f"(gvector {' '.join(elements)})", Typer.TList(containingT)
     
     @staticmethod
     def AnnAssign(node: AnnAssign) -> str:
@@ -605,7 +661,7 @@ class _Builder():
                     except ValueError:
                         raise TypeError(f"instance of type {type(index)} can not be used to index into a list")
                     
-                    return f"(list-ref {name} {index})", nType.contained
+                    return f"(gvector-ref {name} {index})", nType.contained
                 elif isinstance(slice, Slice):
                     raise NotImplementedError("Advanced slicing is not yet implemented for lists")
                 else:
@@ -666,9 +722,10 @@ class Builder():
     }
     
     buildFlags = {
-        'PRINT'     : False, # Include PRINT function
-        'NOT_EQUAL' : False, # Include != function
-        'INPUT'     : False  # Include input function
+        'PRINT'           : False, # Include PRINT function
+        'NOT_EQUAL'       : False, # Include != function
+        'INPUT'           : False, # Include input function
+        'GROWABLE_VECTOR' : False, # Include growableVectors (std)
     }
     
     config = {

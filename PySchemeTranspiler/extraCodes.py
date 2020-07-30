@@ -1,15 +1,18 @@
 class extraC():
     PRINT = '(define (PRINT . args) (for-each (lambda (x) (display x) (display " ")) args)(newline))'
 
-    NOT_EQUAL = "(define (!= a b) (not (equal? a b)))"
+    NOT_EQUAL = '(define (!= a b) (not (equal? a b)))'
     
-    INPUT = "(define (input prompt) (display prompt)(read-line))"
+    INPUT = '(define (input prompt) (display prompt)(read-line))'
+    
+    GROWABLE_VECTOR = '(require data/gvector)\n(define (safe-gvector-set! vec i elm) (if (< i (gvector-count vec)) (gvector-set! vec i elm) (raise "IndexError: list assignment index out of range" #t)))'
 
 class FlagRequirements():
     requirements = {
-        'PRINT'     : set(),
-        'NOT_EQUAL' : set(),
-        'INPUT'     : set()
+        'PRINT'           : set(),
+        'NOT_EQUAL'       : set(),
+        'INPUT'           : set(),
+        'GROWABLE_VECTOR' : set()
     }
 
 class Arts():
