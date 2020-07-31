@@ -8,7 +8,7 @@ class extraC():
     GROWABLE_VECTOR = """
 (require data/gvector)
 (define (safe-gvector-set! vec i elm) (if (< i (gvector-count vec)) (gvector-set! vec i elm) (raise "IndexError: list assignment index out of range" #t)))
-(define (gvector-pop! vec i) (define ret (gvector-ref r i)) (gvector-remove! vec i)ret)
+(define (gvector-pop! vec i) (define ret (gvector-ref vec i)) (gvector-remove! vec i)ret)
 """.strip()
 
 class FlagRequirements():
