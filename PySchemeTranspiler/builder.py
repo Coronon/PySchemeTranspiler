@@ -656,7 +656,7 @@ class _Builder():
                         index = int(Builder.buildFromNode(slice))
                         
                         if index < 0:
-                            index = f"(- (length r) {-index})"
+                            index = f"(- (gvector-count r) {-index})"
                         
                     except ValueError:
                         raise TypeError(f"instance of type {type(index)} can not be used to index into a list")
