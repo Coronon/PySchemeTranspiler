@@ -44,6 +44,32 @@ from .exceptions import throw
 NUMBER_TYPES = [int, float]
 SEPERATOR = '\n'
 
+class TempState():
+    def __init__(self, key: str, tempVal: str) -> None:
+        """Create a temporary change in the current state within the current scope
+
+        Arguments:
+            key     {str} -- Key of temporary change
+            tempVal {str} -- Value of temporary change
+        """
+        self.key = key
+        self.oldExists = Builder.inStateLocal(key)
+        if self.oldExists:
+            self.oldVal = Builder.getStateKeyLocal(key)
+        
+        Builder.setStateKey(key, tempVal)
+    
+    def __enter__(self) -> None:
+        return
+    
+    def __exit__(self, type: type, value: Any, traceback: Any) -> bool:
+        if self.oldExists:
+            Builder.setStateKey(self.key, self.oldVal)
+        else:
+            Builder.removeStateKeyLocal(self.key)
+        
+        return False
+
 class _Builder():
        
     @staticmethod
@@ -482,10 +508,8 @@ class _Builder():
     @staticmethod
     def If(node: If) -> str:
         def handleAssign(node: Assign) -> str:
-            oldState = Builder.getStateKeyLocal('__assignSkipValue__')
-            Builder.setStateKey('__assignSkipValue__', True)
-            possibleDefine = Builder.buildFromNode(elem)
-            Builder.setStateKey('__assignSkipValue__', oldState)
+            with TempState('__assignSkipValue__', True):
+                possibleDefine = Builder.buildFromNode(elem)
             if possibleDefine[:5] != "(set!":
                 Builder.setStateKey(
                 '__ifDefinitions__',
@@ -505,15 +529,13 @@ class _Builder():
             rootIf = True
             Builder.setStateKey('__if__', True)
         
-        oldIfBody = Builder.getStateKey('__ifBody__')
-        Builder.setStateKey('__ifBody__', True)
-        for elem in node.body:
-            #? Move possible definitions before rootIf in current scope
-            if isinstance(elem, Assign) or isinstance(elem, AnnAssign):
-                handleAssign(elem)
-            
-            body += Builder.buildFromNode(elem)
-        Builder.setStateKey('__ifBody__', oldIfBody)
+        with TempState('__ifBody__', True):
+            for elem in node.body:
+                #? Move possible definitions before rootIf in current scope
+                if isinstance(elem, Assign) or isinstance(elem, AnnAssign):
+                    handleAssign(elem)
+                
+                body += Builder.buildFromNode(elem)
         
         if len(body) == 0:
             raise IndentationError("expected an indented block")
@@ -522,21 +544,17 @@ class _Builder():
         
         if node.orelse:
             if isinstance(node.orelse[0], If):
-                oldIfBody = Builder.getStateKey('__ifBody__')
-                Builder.setStateKey('__ifBody__', False)
-                paths.append(Builder.buildFromNode(node.orelse[0]))
-                Builder.setStateKey('__ifBody__', oldIfBody)
+                with TempState('__ifBody__', False):
+                    paths.append(Builder.buildFromNode(node.orelse[0]))
             else:
                 body = ""
-                oldIfBody = Builder.getStateKey('__ifBody__')
-                Builder.setStateKey('__ifBody__', True)
-                for elem in node.orelse:
-                    #? Move possible definitions before rootIf in current scope
-                    if isinstance(elem, Assign) or isinstance(elem, AnnAssign):
-                        handleAssign(elem)
-                    
-                    body += Builder.buildFromNode(elem)
-                Builder.setStateKey('__ifBody__', oldIfBody)
+                with TempState('__ifBody__', True):
+                    for elem in node.orelse:
+                        #? Move possible definitions before rootIf in current scope
+                        if isinstance(elem, Assign) or isinstance(elem, AnnAssign):
+                            handleAssign(elem)
+                        
+                        body += Builder.buildFromNode(elem)
                 paths.append(f"(else {body})")
                 
                 
@@ -975,6 +993,15 @@ class Builder():
             state {Dict[str, Any]} -- Compilation State
         """
         Builder.stateHistory[-1] = state
+
+    @staticmethod
+    def removeStateKeyLocal(key: str) -> None:
+        """Remove a key from the current compilation State
+
+        Arguments:
+            key {str} -- Key to remove
+        """
+        del Builder.stateHistory[-1][key]
 
 
 class _Typer():
