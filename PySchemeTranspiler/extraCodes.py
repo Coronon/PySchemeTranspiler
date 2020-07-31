@@ -5,7 +5,11 @@ class extraC():
     
     INPUT = '(define (input prompt) (display prompt)(read-line))'
     
-    GROWABLE_VECTOR = '(require data/gvector)\n(define (safe-gvector-set! vec i elm) (if (< i (gvector-count vec)) (gvector-set! vec i elm) (raise "IndexError: list assignment index out of range" #t)))'
+    GROWABLE_VECTOR = """
+(require data/gvector)
+(define (safe-gvector-set! vec i elm) (if (< i (gvector-count vec)) (gvector-set! vec i elm) (raise "IndexError: list assignment index out of range" #t)))
+(define (gvector-pop! vec i) (define ret (gvector-ref r i)) (gvector-remove! vec i)ret)
+""".strip()
 
 class FlagRequirements():
     requirements = {

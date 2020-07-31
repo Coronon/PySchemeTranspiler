@@ -389,17 +389,52 @@ class _Builder():
                     raise AttributeError(f"no such attribute function on type list")
                 
                 def append(node: Call, name: str, nType: Typer.TList) -> Tuple[str, type]:
-                    if not 0 < (args := len(node.args)) < 2:
+                    if not (args := len(node.args)) == 1:
                         raise ValueError(f"append on list takes 1 type-compatible argument, {args} provided")
                     
                     value, vType = Builder.buildFromNodeType(node.args[0])
                     if not Typer.isTypeCompatible(vType, nType.contained):
                         raise TypeError(f"element of type {vType} can not be appended to list containing type {nType.contained}")
                     
-                    return f"(gvector-add! {name} {value})"
+                    return f"(gvector-add! {name} {value})", Typer.Null()
+                
+                def pop(node: Call, name: str, nType: Typer.TList) -> Tuple[str, type]:
+                    if not (args := len(node.args)) == 1:
+                        raise ValueError(f"pop on list takes 1 positional argument, {args} provided")
+                    
+                    try:
+                        index = int(Builder.buildFromNode(node.args[0]))
+                    except ValueError:
+                        raise TypeError(f"instance of type {type(index)} can not be used to index into a list")
+                    
+                    return f"(gvector-pop! {name} {index})", nType.contained
+                
+                def insert(node: Call, name: str, nType: Typer.TList) -> Tuple[str, type]:
+                    if not (args := len(node.args)) == 2:
+                        raise ValueError(f"insert on list takes 2 positional arguments, {args} provided")
+                    
+                    try:
+                        index = int(Builder.buildFromNode(node.args[0]))
+                    except ValueError:
+                        raise TypeError(f"instance of type {type(index)} can not be used to index into a list")
+                    
+                    value, vType = Builder.buildFromNodeType(node.args[1])
+                    if not Typer.isTypeCompatible(vType, nType.contained):
+                        raise TypeError(f"element of type {vType} can not be inserted into a list containing type {nType.contained}")
+                    
+                    return f"(gvector-insert! {name} {index} {value})", Typer.Null()
+                
+                def count(node: Call, name: str, nType: Typer.TList) -> Tuple[str, type]:
+                    if not (args := len(node.args)) == 0:
+                        raise ValueError(f"count on list takes no positional argument, {args} provided")
+                    
+                    return f"(gvector-count {name})", int
                 
                 attributes: Dict[str, Callable[[Call], Tuple[str, type]]] = {
-                    'append': append,
+                    'append' : append,
+                    'pop'    : pop,
+                    'insert' : insert,
+                    'count'  : count
                 }
                 
                 return attributes.get(attr, error)(node, name, nType)
