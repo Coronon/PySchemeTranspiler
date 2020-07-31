@@ -16,6 +16,7 @@ from ast import (
     UnaryOp,
     UAdd,
     USub,
+    Not,
     Expr,
     Call,
     keyword,
@@ -36,6 +37,7 @@ from ast import (
     Index,
     Slice,
     Attribute,
+    For,
     arg
     )
 
@@ -223,8 +225,9 @@ class _Builder():
     @staticmethod
     def Assign(node: Assign) -> str:
         ret = ""
+        value, vType = Builder.buildFromNodeType(node.value)
+        
         for target in node.targets:
-            value, vType = Builder.buildFromNodeType(node.value)
             
             if isinstance(target, Subscript):
                 name, nType = Builder.buildFromNodeType(target.value)
@@ -291,15 +294,18 @@ class _Builder():
     def UnaryOp(node: UnaryOp) -> Tuple[str, type]:
         value, vType = Builder.buildFromNodeType(node.operand)
 
-        if vType not in NUMBER_TYPES:
+        if vType in NUMBER_TYPES:
             raise TypeError(f"unaryOperation '{node.op}' can not be applied to type {vType}'")
-        if Builder.buildFromNode(node.op) == "+":
-            return value, vType
-        elif Builder.buildFromNode(node.op) == "-":
-            if isinstance(node.operand, Constant):
-                return f"-{value}", vType
-            
-            return f"(- {value})", vType
+            if Builder.buildFromNode(node.op) == "+":
+                return value, vType
+            elif Builder.buildFromNode(node.op) == "-":
+                if isinstance(node.operand, Constant):
+                    return f"-{value}", vType
+                
+                return f"(- {value})", vType
+        elif vType == bool:
+            if Builder.buildFromNode(node.op) == "not":
+                return f"(not {value})", vType
         
         raise TypeError(f"unaryOperation '{node.op}' can not be applied to type {vType}'")
     
@@ -310,6 +316,10 @@ class _Builder():
     @staticmethod
     def USub(node: USub) -> str:
         return "-"
+    
+    @staticmethod
+    def Not(node: Not) -> str:
+        return "not"
     
     @staticmethod
     def Expr(node: Expr) -> Tuple[str, type]:
@@ -509,13 +519,13 @@ class _Builder():
     def If(node: If) -> str:
         def handleAssign(node: Assign) -> str:
             with TempState('__assignSkipValue__', True):
-                possibleDefine = Builder.buildFromNode(elem)
+                possibleDefine = Builder.buildFromNode(node)
             if possibleDefine[:5] != "(set!":
                 Builder.setStateKey(
-                '__ifDefinitions__',
-                [*Builder.getStateKeyLocal('__ifDefinitions__'), possibleDefine]
-                )
-                return Builder.buildFromNode(elem)
+                    '__definitions__',
+                    [*Builder.getStateKeyLocal('__definitions__'), possibleDefine]
+                    )
+                return Builder.buildFromNode(node)
             
             return possibleDefine
         
@@ -523,15 +533,15 @@ class _Builder():
         body = ""
         
         #* Check if hierarchy
-        rootIf = False
-        if not Builder.getStateKeyLocal('__if__'):
-            #? Root if
-            rootIf = True
-            Builder.setStateKey('__if__', True)
+        rootDef = False
+        #? Try to aquire root(if/loop) claim
+        if not Builder.getStateKeyLocal('__definitionsClaim__'):
+            rootDef = True
+            Builder.setStateKey('__definitionsClaim__', True)
         
-        with TempState('__ifBody__', True):
+        with TempState('__innerBody__', True):
             for elem in node.body:
-                #? Move possible definitions before rootIf in current scope
+                #? Move possible definitions before rootDef in current scope
                 if isinstance(elem, Assign) or isinstance(elem, AnnAssign):
                     handleAssign(elem)
                 
@@ -544,31 +554,30 @@ class _Builder():
         
         if node.orelse:
             if isinstance(node.orelse[0], If):
-                with TempState('__ifBody__', False):
+                with TempState('__innerBody__', False):
                     paths.append(Builder.buildFromNode(node.orelse[0]))
             else:
                 body = ""
-                with TempState('__ifBody__', True):
+                with TempState('__innerBody__', True):
                     for elem in node.orelse:
-                        #? Move possible definitions before rootIf in current scope
+                        #? Move possible definitions before rootDef in current scope
                         if isinstance(elem, Assign) or isinstance(elem, AnnAssign):
                             handleAssign(elem)
                         
                         body += Builder.buildFromNode(elem)
                 paths.append(f"(else {body})")
                 
-                
         
-        if not rootIf:
-            if not Builder.getStateKey('__ifBody__'):
+        if not rootDef:
+            if not Builder.getStateKey('__innerBody__'):
                 return SEPERATOR.join(paths)
             else:
                 return f"(cond {' '.join(paths)})"
         else:
             Builder.setStateKey('__if__', False)
             
-            defs = Builder.getStateKeyLocal('__ifDefinitions__')
-            Builder.setStateKey('__ifDefinitions__', [])
+            defs = Builder.getStateKeyLocal('__definitions__')
+            Builder.setStateKey('__definitions__', [])
             
             return f"{SEPERATOR.join(defs)}{SEPERATOR if len(defs) > 0 else ''}(cond {' '.join(paths)})"
     
@@ -738,6 +747,87 @@ class _Builder():
     # def Slice(node: Slice) -> str:          
     #     pass
     
+    @staticmethod
+    def For(node: For) -> str:
+        def handleAssign(node: Assign) -> str:
+            with TempState('__assignSkipValue__', True):
+                possibleDefine = Builder.buildFromNode(node)
+            if possibleDefine[:5] != "(set!":
+                Builder.setStateKey(
+                '__definitions__',
+                [*Builder.getStateKeyLocal('__definitions__'), possibleDefine]
+                )
+                return Builder.buildFromNode(node)
+            
+            return possibleDefine
+        
+        #* Handle iter typing
+        iterc, itercType = Builder.buildFromNodeType(node.iter)
+        if not isinstance(itercType, Typer.Iterable):
+            raise TypeError(f"can not iterate over instance of {itercType}")
+        
+        targetType = itercType.iterType
+        if not isinstance(itercType, Typer.TList):
+            raise NotImplementedError(f"iterable of type {itercType} is currently not supported in for loops")
+        
+        if isinstance(itercType, Typer.TList):
+            if not itercType.native:
+                iterc = f"(gvector->list {iterc})"
+        
+        #* Determine target
+        target = None
+        if isinstance(node.target, Name):
+            target = node.target.id
+            if Builder.inState(target):
+                if Builder.config['TYPES_STRICT']:
+                    #? Strict mode
+                    if not Typer.isTypeCompatible((sType := Builder.getStateKeyLocal(target)), targetType):
+                        raise TypeError(f"Type {sType} and {vType} are incompatible")
+                else:
+                    Builder.setStateKey(target, targetType)
+            else:
+                Builder.setStateKey(target, targetType)
+                Builder.setStateKey(
+                    '__definitions__',
+                    [*Builder.getStateKeyLocal('__definitions__'), f"(define {target} void)"]
+                    )       
+        else:
+            raise NotImplementedError("multiple targets are currently not supported in for loops")
+        
+        body = f"(set! {target} __i__)"
+        
+        #* Check for hierarchy
+        rootDef = False
+        #? Try to aquire root(if/loop) claim
+        if not Builder.getStateKeyLocal('__definitionsClaim__'):
+            rootDef = True
+            Builder.setStateKey('__definitionsClaim__', True)
+        
+        with TempState('__innerBody__', True):
+            for elem in node.body:
+                #? Move possible definitions before rootDef in current scope
+                if isinstance(elem, Assign) or isinstance(elem, AnnAssign):
+                    handleAssign(elem)
+                
+                body += Builder.buildFromNode(elem)
+        
+        if len(body) == 0:
+            raise IndentationError("expected an indented block")
+        
+        if node.orelse:
+            raise NotImplementedError("'else' syntax is not supported in conjunction with for loops")
+        
+        
+        ret = f"(for-each (lambda (__i__) {body}) {iterc})"
+        if not rootDef:
+                return ret
+        else:
+            defs = Builder.getStateKeyLocal('__definitions__')
+            Builder.setStateKey('__definitions__', [])
+            
+            return f"{SEPERATOR.join(defs)}{SEPERATOR if len(defs) > 0 else ''}{ret}"
+    
+
 class Builder():
     Interpreter = Callable[[AST], str]
     switcher: Dict[type, Callable] = {
@@ -754,6 +844,7 @@ class Builder():
         UnaryOp     : _Builder.UnaryOp,
         UAdd        : _Builder.UAdd,
         USub        : _Builder.USub,
+        Not         : _Builder.Not,
         Expr        : _Builder.Expr,
         Call        : _Builder.Call,
         If          : _Builder.If,
@@ -771,6 +862,7 @@ class Builder():
         AnnAssign   : _Builder.AnnAssign,
         Subscript   : _Builder.Subscript,
         Index       : _Builder.Index,
+        For         : _Builder.For,
         keyword     : _Builder.keyword
     }
     
@@ -859,7 +951,7 @@ class Builder():
             'print' : Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None), #? This is a dummy that will be transpiled to 'PRINT'
             'PRINT' : Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None),
             'input' : Typer.TFunction([str], kwArgs=[], vararg=False, ret=str),
-            'range' : Typer.TFunction([int], kwArgs=[], vararg=True, ret=Typer.TList(int)), #? We set this to vararg as we specifically check this case
+            'range' : Typer.TFunction([int], kwArgs=[], vararg=True, ret=Typer.TList(int, native=True)), #? We set this to vararg as we specifically check this case
             'int'   : Typer.TFunction([Typer.TUnion([float, str, bool])],       kwArgs=[], vararg=False, ret=int),
             'float' : Typer.TFunction([Typer.TUnion([int, str, bool])],         kwArgs=[], vararg=False, ret=float),
             'str'   : Typer.TFunction([Typer.TUnion([int, float, bool, list])], kwArgs=[], vararg=False, ret=str),
@@ -867,8 +959,9 @@ class Builder():
         }
         Builder.defaultWidenedState = {
             '__if__'              : False, #? Flag for transpiler if in an active if statement
-            '__ifBody__'          : False, #? Flag for tramspiler if currently in an if body
-            '__ifDefinitions__'   : [],    #? Used to store local definitions to make them persistent on lvl of rootif
+            '__innerBody__'          : False, #? Flag for transpiler if currently in an if body
+            '__definitionsClaim__': False, #? Flag for transpiler to communicate root(if/loop) lock
+            '__definitions__'     : [],    #? Used to store local definitions to make them persistent on lvl of root(if/loop)
             '__assignSkipValue__' : False  #? Flag for transpiler to not include value in assignment
         }
         
@@ -1080,6 +1173,17 @@ class Typer():
         def __repr__(self):
             return "NULL"
     
+    class Iterable():
+        type = "Iterable"
+        
+        def __init__(self, iterType: type) -> None:
+            """BaseClass of all iterables
+
+            Arguments:
+                iterType {type} -- Type of objects returned on iteration
+            """
+            self.iterType = iterType
+    
     class TFunction(T):
         type = "TFunction"
         
@@ -1089,11 +1193,13 @@ class Typer():
             self.vararg = vararg
             self.ret    = ret
     
-    class TList(T):
+    class TList(Iterable, T):
         type = "TList"
 
-        def __init__(self, contained: type):
+        def __init__(self, contained: type, native: bool=False):
+            super(Typer.TList, self).__init__(contained)
             self.contained = contained
+            self.native    = native
         
         def __repr__(self):
             return str(f"<{self.type}: {self.contained}>")
