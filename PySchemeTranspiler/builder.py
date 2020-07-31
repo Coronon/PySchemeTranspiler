@@ -38,11 +38,13 @@ from ast import (
     Slice,
     Attribute,
     For,
+    ImportFrom,
     arg
     )
 
 from .exceptions import throw
 
+IGNORED_IMPORTS = ["typing"]
 NUMBER_TYPES = [int, float]
 SEPERATOR = '\n'
 
@@ -827,6 +829,12 @@ class _Builder():
             
             return f"{SEPERATOR.join(defs)}{SEPERATOR if len(defs) > 0 else ''}{ret}"
     
+    @staticmethod
+    def ImportFrom(node: ImportFrom) -> str:
+        if not node.module in IGNORED_IMPORTS:
+            return _Builder.error(node)
+        
+        return ""
 
 class Builder():
     Interpreter = Callable[[AST], str]
@@ -863,6 +871,7 @@ class Builder():
         Subscript   : _Builder.Subscript,
         Index       : _Builder.Index,
         For         : _Builder.For,
+        ImportFrom  : _Builder.ImportFrom,
         keyword     : _Builder.keyword
     }
     

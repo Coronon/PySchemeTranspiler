@@ -23,7 +23,9 @@ class Converter():
         
         #* Transpile tokens to scheme sourcecode one by one
         for i in toks:
-            userCode += f"{Builder.buildFromNode(i)}\n"
+            code = Builder.buildFromNode(i)
+            if code:
+                userCode += code + "\n"
         
         #* Edit code according to build flags    
         buildFlags = Converter.compileBuildFlags(Builder.buildFlags)
