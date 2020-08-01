@@ -143,25 +143,32 @@ class _Builder():
     @staticmethod
     def Constant(node: Constant) -> Tuple[str]:
         value = node.value
+        ret = None
         
         if isinstance(value, str):
-            return f'"{value}"', str
+            ret = f'"{value}"', str
         #? This has to be before int as bool is a subclass of int
         elif isinstance(value, bool):
             boolSwitcher: Dict[bool, str] = {
                 True  : "#t",
                 False : "#f"
             }
-            return boolSwitcher[value], bool
+            ret = boolSwitcher[value], bool
         elif isinstance(value, int):
-            return str(value), int
+            ret = str(value), int
         elif isinstance(value, float):
-            return str(value), float
+            ret = str(value), float
         elif value is None:
             #? We use a symbol as it is compiled into a staic pointer in the binary
-            return "'NoneType", None
+            ret = "'NoneType", None
         else:
             _Builder.error(node)
+        
+        #? Check if we should resolve as a literal if
+        if Builder.getStateKeyLocal('__resolveAsIf__'):
+            return IfLiteralResolver.resolve(*ret)
+        
+        return ret
     
     @staticmethod
     def Return(node: Return) -> str:
@@ -230,7 +237,13 @@ class _Builder():
     
     @staticmethod
     def Name(node: Name) -> Tuple[str, type]:
-        return node.id, Builder.getStateKey(node.id)
+        ret = node.id, Builder.getStateKey(node.id)
+        
+        #? Check if we should resolve as a literal if
+        if Builder.getStateKeyLocal('__resolveAsIf__'):
+            return IfLiteralResolver.resolve(*ret)
+        
+        return ret
     
     @staticmethod
     def Assign(node: Assign) -> str:
@@ -309,22 +322,35 @@ class _Builder():
     
     @staticmethod
     def UnaryOp(node: UnaryOp) -> Tuple[str, type]:
-        value, vType = Builder.buildFromNodeType(node.operand)
-
+        ret = None
+        
+        with TempState('__resolveAsIf__', False):
+            value, vType = Builder.buildFromNodeType(node.operand)
+        
         if vType in NUMBER_TYPES:
-            raise TypeError(f"unaryOperation '{node.op}' can not be applied to type {vType}'")
             if Builder.buildFromNode(node.op) == "+":
-                return value, vType
+                ret = value, vType
             elif Builder.buildFromNode(node.op) == "-":
                 if isinstance(node.operand, Constant):
-                    return f"-{value}", vType
-                
-                return f"(- {value})", vType
+                    ret = f"-{value}", vType
+                else:
+                    ret = f"(- {value})", vType
         elif vType == bool:
             if Builder.buildFromNode(node.op) == "not":
-                return f"(not {value})", vType
+                ret = f"(not {value})", vType
+            
         
-        raise TypeError(f"unaryOperation '{node.op}' can not be applied to type {vType}'")
+        #? Check if we should resolve as a literal if
+        if Builder.getStateKeyLocal('__resolveAsIf__'):
+            if ret is not None:
+                return IfLiteralResolver.resolve(*ret)
+            elif Builder.buildFromNode(node.op) == "not":
+                return f"(not {IfLiteralResolver.resolve(value, vType)[0]})"
+        
+        if ret is None:
+            raise TypeError(f"unaryOperation '{node.op}' can not be applied to type {vType}'")
+        
+        return ret
     
     @staticmethod
     def UAdd(node: UAdd) -> str:
@@ -568,7 +594,8 @@ class _Builder():
         if len(body) == 0:
             raise IndentationError("expected an indented block")
         
-        paths.append(f"({Builder.buildFromNode(node.test)} {body})")
+        with TempState('__resolveAsIf__', True):
+            paths.append(f"({Builder.buildFromNode(node.test)} {body})")
         
         if node.orelse:
             if isinstance(node.orelse[0], If):
@@ -597,42 +624,41 @@ class _Builder():
             
             defs = Builder.getStateKeyLocal('__definitions__')
             Builder.setStateKey('__definitions__', [])
+            Builder.setStateKey('__definitionsClaim__', False)
             
             return f"{SEPERATOR.join(defs)}{SEPERATOR if len(defs) > 0 else ''}(cond {' '.join(paths)})"
     
     @staticmethod
     def Compare(node: Compare) -> Tuple[str, type]:
-        def determineOp(op: str, type1: type, type2: type) -> str:
-            if op == "==":
-                return "equal?"
-            if op == "!=":
-                return "!="
+        with TempState('__resolveAsIf__', False):
+            def determineOp(op: str, type1: type, type2: type) -> str:
+                if op in ["==", "!="]: return op
+                
+                #? Numbers
+                if type1 in NUMBER_TYPES and type2 in NUMBER_TYPES:
+                    return op
+                #? Strings
+                if type1 == str and type2 == str:
+                    return f"string{op}?"
+                
+                raise TypeError(f"can not compare instances of types {type1} and {type2}")
             
-            #? Numbers
-            if type1 in NUMBER_TYPES and type2 in NUMBER_TYPES:
-                return op
-            #? Strings
-            if type1 == str and type2 == str:
-                return f"string{op}?"
-            
-            raise TypeError(f"can not compare instances of types {type1} and {type2}")
-        
-        fLeftV, fLeftT   = Builder.buildFromNodeType(node.left)
-        fRightV, fRightT = Builder.buildFromNodeType(node.comparators[0])
-        fOp = determineOp(Builder.buildFromNode(node.ops[0]), fLeftT, fRightT)
-        ret = f"({fOp} {fLeftV} {fRightV})"
-        if len(node.ops) == 1:
-            return ret, bool
+            fLeftV, fLeftT   = Builder.buildFromNodeType(node.left)
+            fRightV, fRightT = Builder.buildFromNodeType(node.comparators[0])
+            fOp = determineOp(Builder.buildFromNode(node.ops[0]), fLeftT, fRightT)
+            ret = f"({fOp} {fLeftV} {fRightV})"
+            if len(node.ops) == 1:
+                return ret, bool
 
-        #? Statements like: a < b > c < d -> a < b && b > c && c < d
-        # We compile them into a flattend and
-        for i in range(1, len(node.ops)):
-            leftE, rightE, opE = node.comparators[i-1], node.comparators[i], Builder.buildFromNode(node.ops[i])
-            leftV, leftT   = Builder.buildFromNodeType(leftE)
-            rightV, rightT = Builder.buildFromNodeType(rightE)
-            op = determineOp(opE, leftT, rightT)
-            ret += f"({op} {leftV} {rightV})"
-            
+            #? Statements like: a < b > c < d -> a < b && b > c && c < d
+            # We compile them into a flattend and
+            for i in range(1, len(node.ops)):
+                leftE, rightE, opE = node.comparators[i-1], node.comparators[i], Builder.buildFromNode(node.ops[i])
+                leftV, leftT   = Builder.buildFromNodeType(leftE)
+                rightV, rightT = Builder.buildFromNodeType(rightE)
+                op = determineOp(opE, leftT, rightT)
+                ret += f"({op} {leftV} {rightV})"
+                
         ret = f"(and {ret})"
         return ret, bool
         
@@ -650,6 +676,7 @@ class _Builder():
     
     @staticmethod
     def Eq(node: Eq) -> str:
+        Builder.buildFlags['EQUAL'] = True
         return "=="
 
     @staticmethod
@@ -676,17 +703,28 @@ class _Builder():
     @staticmethod
     def List(node: List) -> Tuple[str, type]:
         Builder.buildFlags['GROWABLE_VECTOR'] = True
+        
+        ret = None
+        
         containingT = Typer.TPending()
         elements = []
-        for entry in node.elts:
-            value, vType = Builder.buildFromNodeType(entry)
-            elements.append(value)
-            containingT = Typer.mergeTypes(containingT, vType)
-
-        if not elements:
-            return "(gvector)", Typer.TList(containingT)
         
-        return f"(gvector {' '.join(elements)})", Typer.TList(containingT)
+        with TempState('__resolveAsIf__', False):
+            for entry in node.elts:
+                value, vType = Builder.buildFromNodeType(entry)
+                elements.append(value)
+                containingT = Typer.mergeTypes(containingT, vType)
+
+            if not elements:
+                ret = "(gvector)", Typer.TList(containingT)
+            else:
+                ret = f"(gvector {' '.join(elements)})", Typer.TList(containingT)
+        
+        #? Check if we should resolve as a literal if
+        if Builder.getStateKeyLocal('__resolveAsIf__'):
+            return IfLiteralResolver.resolve(*ret)
+        
+        return ret
     
     @staticmethod
     def AnnAssign(node: AnnAssign) -> str:
@@ -722,7 +760,8 @@ class _Builder():
     
     @staticmethod
     def Subscript(node: Subscript) -> Tuple[str, type]:
-        name, nType = Builder.buildFromNodeType(node.value)
+        with TempState('__resolveAsIf__', False):
+            name, nType = Builder.buildFromNodeType(node.value)
         
         class SubscriptResolver():
             @staticmethod
@@ -752,7 +791,14 @@ class _Builder():
             Typer.TList: SubscriptResolver.TList
         }
         
-        return types.get(type(nType), SubscriptResolver.error)(name, nType, node.slice)
+        with TempState('__resolveAsIf__', False):
+            ret = types.get(type(nType), SubscriptResolver.error)(name, nType, node.slice)
+        
+        #? Check if we should resolve as a literal if
+        if Builder.getStateKeyLocal('__resolveAsIf__'):
+            return IfLiteralResolver.resolve(*ret)
+        
+        return ret
     
     @staticmethod
     def Index(node: Index) -> str:
@@ -844,6 +890,7 @@ class _Builder():
         else:
             defs = Builder.getStateKeyLocal('__definitions__')
             Builder.setStateKey('__definitions__', [])
+            Builder.setStateKey('__definitionsClaim__', False)
             
             return f"{SEPERATOR.join(defs)}{SEPERATOR if len(defs) > 0 else ''}{ret}"
     
@@ -895,6 +942,7 @@ class Builder():
     
     buildFlags = {
         'PRINT'           : False, # Include PRINT function
+        'EQUAL'           : False, # Include == function
         'NOT_EQUAL'       : False, # Include != function
         'INPUT'           : False, # Include input function
         'GROWABLE_VECTOR' : False, # Include growableVectors (std)
@@ -993,7 +1041,8 @@ class Builder():
             '__innerBody__'       : False, #? Flag for transpiler if currently in an if body
             '__definitionsClaim__': False, #? Flag for transpiler to communicate root(if/loop) lock
             '__definitions__'     : [],    #? Used to store local definitions to make them persistent on lvl of root(if/loop)
-            '__assignSkipValue__' : False  #? Flag for transpiler to not include value in assignment
+            '__assignSkipValue__' : False, #? Flag for transpiler to not include value in assignment
+            '__resolveAsIf__'     : False, #? Flag fot transpiler to resolve constant and name as their basic testCase
         }
         
         Builder.setState({**defaultRootExclusiveState, **Builder.defaultWidenedState})
@@ -1392,4 +1441,54 @@ class Typer():
             return type1
         
         raise TypeError(f"can not merge types {type1} and {type2}")
-         
+
+
+
+
+
+class IfLiteralResolver():
+    @staticmethod
+    def error(vType: type):
+        raise TypeError(f"can not use instance of type {vType} in a literal if")
+    
+    @staticmethod
+    def bool(value: str) -> Tuple[str, type]:
+        return value, bool
+    
+    @staticmethod
+    def int(value: str) -> Tuple[str, type]:
+        return f"(!= {value} 0)", bool
+    
+    @staticmethod
+    def float(value: str) -> Tuple[str, type]:
+        return f"(!= {value} 0)", bool
+    
+    @staticmethod
+    def str(value: str) -> Tuple[str, type]:
+        return f'(!= {value} "")', bool
+    
+    @staticmethod
+    def NoneType(value: str) -> Tuple[str, type]:
+        return "#f", bool
+    
+    @staticmethod
+    def TList(value: str) -> Tuple[str, type]:
+        return f"(!= (gvector-count {value}) 0)", bool
+    
+    @staticmethod
+    def resolve(value: str, vType: type) -> Tuple[str, type]:
+        switcher: Dict[type, Callable] = {
+            bool        : IfLiteralResolver.bool,
+            int         : IfLiteralResolver.int,
+            float       : IfLiteralResolver.float,
+            str         : IfLiteralResolver.str,
+            None        : IfLiteralResolver.NoneType,
+            Typer.TList : IfLiteralResolver.TList,
+        }
+        
+        Builder.buildFromNode(NotEq()) #? Let _Builder.NotEq handle buildFlags to not spread functionality even more
+        
+        if isinstance(vType, Typer.T):
+            return switcher.get(type(vType), IfLiteralResolver.error)(value)
+        
+        return switcher.get(vType, IfLiteralResolver.error)(value)

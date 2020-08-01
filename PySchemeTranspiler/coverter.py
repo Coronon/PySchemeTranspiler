@@ -34,6 +34,8 @@ class Converter():
             compilerCode += f"{extraC.GROWABLE_VECTOR}\n"
         if 'PRINT' in buildFlags:
             compilerCode += f"{extraC.PRINT}\n"
+        if 'EQUAL' in buildFlags:
+            compilerCode += f"{extraC.EQUAL}\n"
         if 'NOT_EQUAL' in buildFlags:
             compilerCode += f"{extraC.NOT_EQUAL}\n"
         if 'INPUT' in buildFlags:

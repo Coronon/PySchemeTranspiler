@@ -1,7 +1,9 @@
 class extraC():
     PRINT = '(define (PRINT . args) (for-each (lambda (x) (display x) (display " ")) args)(newline))'
+    
+    EQUAL = '(define (== a b) (if (and (number? a) (number? b)) (= a b) (equal? a b)))'
 
-    NOT_EQUAL = '(define (!= a b) (not (equal? a b)))'
+    NOT_EQUAL = '(define (!= a b) (if (and (number? a) (number? b)) (not (= a b)) (not (equal? a b))))'
     
     INPUT = '(define (input prompt) (display prompt)(read-line))'
     
@@ -14,6 +16,7 @@ class extraC():
 class FlagRequirements():
     requirements = {
         'PRINT'           : set(),
+        'EQUAL'           : set(),
         'NOT_EQUAL'       : set(),
         'INPUT'           : set(),
         'GROWABLE_VECTOR' : set()
