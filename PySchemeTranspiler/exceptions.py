@@ -15,8 +15,9 @@ def throw(expt: Exception, node: AST):
             for i, line in enumerate(file):
                 if i == node.lineno-1:
                     infoStr = f"{node.lineno}>{node.col_offset}: "
+                    leadingSpaces = len(line) - len(line.lstrip(' '))
                     print(colorT(infoStr, Colors.ORANGE), line.strip())
-                    print(' ' * (len(infoStr) + node.col_offset + 1) + colorT('^', Colors.GREEN))
+                    print(' ' * (len(infoStr) + node.col_offset - leadingSpaces + 1) + colorT('^', Colors.GREEN))
     except:
         print(colorT(f"Could not print offending code at: {node.lineno}>{node.col_offset}", Colors.ORANGE))
     raise SystemExit()
