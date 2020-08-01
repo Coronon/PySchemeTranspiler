@@ -6,7 +6,7 @@ from .coloring import Colors, colorB, colorT
 class ConversionException(Exception):
     pass
 
-def throw(expt: Exception, node: AST):
+def throw(expt: Exception, node: AST) -> None:
     print(colorT(f"[{expt.__class__.__name__}] {expt}", Colors.RED))
     
     #? Highlight offending line
@@ -21,3 +21,18 @@ def throw(expt: Exception, node: AST):
     except:
         print(colorT(f"Could not print offending code at: {node.lineno}>{node.col_offset}", Colors.ORANGE))
     raise SystemExit()
+
+def warn(warnType: str, warn: Exception, node: AST) -> None:
+    print(colorT(f"[{warnType}] {warn}", Colors.ORANGE))
+    
+    #? Highlight offending line
+    try:
+        with open(Shared.currentFile, "r") as file:
+            for i, line in enumerate(file):
+                if i == node.lineno-1:
+                    infoStr = f"{node.lineno}>{node.col_offset}: "
+                    leadingSpaces = len(line) - len(line.lstrip(' '))
+                    print(colorT(infoStr, Colors.ORANGE), line.strip())
+                    print(' ' * (len(infoStr) + node.col_offset - leadingSpaces + 1) + colorT('^', Colors.GREEN))
+    except:
+        print(colorT(f"Could not print maybe offending code at: {node.lineno}>{node.col_offset}", Colors.ORANGE))

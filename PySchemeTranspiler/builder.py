@@ -42,7 +42,7 @@ from ast import (
     arg
     )
 
-from .exceptions import throw
+from .exceptions import throw, warn
 
 IGNORED_IMPORTS = ["typing"]
 NUMBER_TYPES = [int, float]
@@ -132,10 +132,11 @@ class _Builder():
             Builder.setStateKey(*t)
         
         #* Body
-        body = ""
-        for i in node.body:
-            body += Builder.buildFromNode(i)
-        
+        with TempState('__returnType__', retType):
+            body = ""
+            for i in node.body:
+                body += Builder.buildFromNode(i)
+            
         Builder.popState()
         return f'(define ({name} {args}) {body})'
 
@@ -156,12 +157,19 @@ class _Builder():
             return str(value), int
         elif isinstance(value, float):
             return str(value), float
+        elif value is None:
+            #? We use a symbol as it is compiled into a staic pointer in the binary
+            return "'NoneType", None
         else:
             _Builder.error(node)
     
     @staticmethod
     def Return(node: Return) -> str:
-        return Builder.buildFromNode(node.value)
+        value, vType = Builder.buildFromNodeType(node.value)
+        if not Typer.isTypeCompatible(vType, (sType := Builder.getStateKeyLocal('__returnType__'))):
+            raise TypeError(f"Type {sType} and {vType} are incompatible for return value")
+        
+        return value
     
     @staticmethod
     def BinOp(node: BinOp) -> Tuple[str, Any]:
@@ -273,7 +281,8 @@ class _Builder():
                         if not Typer.isTypeCompatible((sType := Builder.getStateKeyLocal(target.id)), vType):
                             raise TypeError(f"Type {sType} and {vType} are incompatible for '{target.id}'")
                         #? Allow automatic conversion between compatible types that dont cause data loss
-                        Builder.setStateKey(target.id, vType)
+                        if vType is not None:
+                            Builder.setStateKey(target.id, vType)
                     else:
                         #? Unstrict mode
                         Builder.setStateKey(target.id, vType)
@@ -892,6 +901,8 @@ class Builder():
     #? For default state see `Builder.initState()`
     stateHistory: List[Dict[str, Any]] = [{}]
     
+    currentNode: AST = None
+    
     @staticmethod
     def buildFromNode(node: AST) -> str:
         """Build sourceCode from a AST node
@@ -938,6 +949,8 @@ class Builder():
             str -- Compiled sourceCode
             Any -- Type of compiled object (for internal use)
         """
+        Builder.currentNode = node
+        
         if Builder.config['DEBUG']:
             return Builder.switcher.get(type(node), _Builder.error)(node)
         
@@ -951,20 +964,20 @@ class Builder():
         """Init the root state to avoid foreward declaration issues
         """
         defaultRootExclusiveState = {
-            #? All primitive types are shadowed by their corresponding caster functionTypes!
-            # 'bool'  : bool,
-            # 'int'   : int,
-            # 'float' : float,
-            # 'str'   : str,
-            # 'list'  : list,
+            'bool'  : bool,
+            'int'   : int,
+            'float' : float,
+            'str'   : str,
+            'list'  : list,
             'print' : Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None), #? This is a dummy that will be transpiled to 'PRINT'
             'PRINT' : Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None),
             'input' : Typer.TFunction([str], kwArgs=[], vararg=False, ret=str),
             'range' : Typer.TFunction([int], kwArgs=[], vararg=True, ret=Typer.TList(int, native=True)), #? We set this to vararg as we specifically check this case
-            'int'   : Typer.TFunction([Typer.TUnion([float, str, bool])],       kwArgs=[], vararg=False, ret=int),
-            'float' : Typer.TFunction([Typer.TUnion([int, str, bool])],         kwArgs=[], vararg=False, ret=float),
-            'str'   : Typer.TFunction([Typer.TUnion([int, float, bool, list])], kwArgs=[], vararg=False, ret=str),
-            'bool'  : Typer.TFunction([Typer.TUnion([int, float, str, list])],  kwArgs=[], vararg=False, ret=bool)
+            #? No primitive types should be shadowed by their corresponding caster functionTypes! This is just help for the developer
+            # 'int'   : Typer.TFunction([Typer.TUnion([float, str, bool])],       kwArgs=[], vararg=False, ret=int),
+            # 'float' : Typer.TFunction([Typer.TUnion([int, str, bool])],         kwArgs=[], vararg=False, ret=float),
+            # 'str'   : Typer.TFunction([Typer.TUnion([int, float, bool, list])], kwArgs=[], vararg=False, ret=str),
+            # 'bool'  : Typer.TFunction([Typer.TUnion([int, float, str, list])],  kwArgs=[], vararg=False, ret=bool)
         }
         Builder.defaultWidenedState = {
             '__if__'              : False, #? Flag for transpiler if in an active if statement
@@ -1166,6 +1179,9 @@ class _Typer():
     def AnnAssign(node: AnnAssign) -> type:
         return _Typer._literalAnnotation(node.annotation)
 
+    @staticmethod
+    def Subscript(node: Subscript) -> type:
+        return _Typer._literalSubscript(node)
 
 class Typer():
     
@@ -1241,6 +1257,7 @@ class Typer():
         Constant  : _Typer.Constant,
         Name      : _Typer.Name,
         AnnAssign : _Typer.AnnAssign,
+        Subscript : _Typer.Subscript,
         arg       : _Typer.arg
     }
     
@@ -1267,6 +1284,11 @@ class Typer():
         
         #? One or both types are Any
         if type1 == Any or type2 == Any:
+            return True
+        
+        #? One or both types are None
+        if type1 is None or type2 is None:
+            warn("TypeWarning", "Can not assure type correctness for None", Builder.currentNode)
             return True
         
         #? TUnion
