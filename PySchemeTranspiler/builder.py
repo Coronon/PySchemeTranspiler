@@ -278,11 +278,17 @@ class _Builder():
                 if Builder.inStateLocal(target.id):
                     if Builder.config['TYPES_STRICT']:
                         #? Strict mode
-                        if not Typer.isTypeCompatible((sType := Builder.getStateKeyLocal(target.id)), vType):
-                            raise TypeError(f"Type {sType} and {vType} are incompatible for '{target.id}'")
                         #? Allow automatic conversion between compatible types that dont cause data loss
-                        if vType is not None:
-                            Builder.setStateKey(target.id, vType)
+                        sType = Builder.getStateKeyLocal(target.id)
+                        if not Typer.isTypeCompatible(vType, sType):
+                            raise TypeError(f"Type {sType} and {vType} are incompatible for '{target.id}'")
+                        
+                        if sType is None and vType is not None:
+                            if Builder.getStateKeyLocal('__definitionsClaim__'):
+                                warn("TypeWarning", "Can not assure type correctness for retyped variable in a control structure", Builder.currentNode)
+                            
+                            #? We merge the types here to avoid int->float->int shenanigans
+                            Builder.setStateKey(target.id, Typer.mergeTypes(sType, vType))
                     else:
                         #? Unstrict mode
                         Builder.setStateKey(target.id, vType)
@@ -554,7 +560,8 @@ class _Builder():
             for elem in node.body:
                 #? Move possible definitions before rootDef in current scope
                 if isinstance(elem, Assign) or isinstance(elem, AnnAssign):
-                    handleAssign(elem)
+                    body += handleAssign(elem)
+                    continue
                 
                 body += Builder.buildFromNode(elem)
         
@@ -573,7 +580,8 @@ class _Builder():
                     for elem in node.orelse:
                         #? Move possible definitions before rootDef in current scope
                         if isinstance(elem, Assign) or isinstance(elem, AnnAssign):
-                            handleAssign(elem)
+                            body += handleAssign(elem)
+                            continue
                         
                         body += Builder.buildFromNode(elem)
                 paths.append(f"(else {body})")
@@ -695,12 +703,12 @@ class _Builder():
         if Builder.inStateLocal(name):
             if Builder.config['TYPES_STRICT']:
                 #? Strict mode
-                if not Typer.isTypeCompatible((sType := Builder.getStateKeyLocal(name)), aType):
-                    raise TypeError(f"Type {sType} and {aType} are incompatible for '{name}'")
-                #? Allow automatic conversion between compatible types that dont cause data loss
-                Builder.setStateKey(name, aType)
+                raise TypeError(f"Can not redefine variable type")
             else:
                 #? Unstrict mode
+                if Builder.getStateKeyLocal('__definitionsClaim__'):
+                    warn("TypeWarning", "Can not assure type correctness for retyped variable in a control structure", Builder.currentNode)
+                
                 Builder.setStateKey(name, aType)
                 
             return f"(set! {name} {value})"
@@ -818,7 +826,8 @@ class _Builder():
             for elem in node.body:
                 #? Move possible definitions before rootDef in current scope
                 if isinstance(elem, Assign) or isinstance(elem, AnnAssign):
-                    handleAssign(elem)
+                    body += handleAssign(elem)
+                    continue
                 
                 body += Builder.buildFromNode(elem)
         
@@ -981,7 +990,7 @@ class Builder():
         }
         Builder.defaultWidenedState = {
             '__if__'              : False, #? Flag for transpiler if in an active if statement
-            '__innerBody__'          : False, #? Flag for transpiler if currently in an if body
+            '__innerBody__'       : False, #? Flag for transpiler if currently in an if body
             '__definitionsClaim__': False, #? Flag for transpiler to communicate root(if/loop) lock
             '__definitions__'     : [],    #? Used to store local definitions to make them persistent on lvl of root(if/loop)
             '__assignSkipValue__' : False  #? Flag for transpiler to not include value in assignment
@@ -1287,8 +1296,10 @@ class Typer():
             return True
         
         #? One or both types are None
-        if type1 is None or type2 is None:
+        if type1 is None:
             warn("TypeWarning", "Can not assure type correctness for None", Builder.currentNode)
+            return True
+        elif type2 is None:
             return True
         
         #? TUnion
@@ -1374,6 +1385,11 @@ class Typer():
         
         if isinstance(type1, Typer.TPending):
             return type2
+        
+        if type1 is None:
+            return type2
+        elif type2 is None:
+            return type1
         
         raise TypeError(f"can not merge types {type1} and {type2}")
          
