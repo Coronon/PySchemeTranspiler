@@ -11,7 +11,16 @@ class extraC():
 (require data/gvector)
 (define (safe-gvector-set! vec i elm) (if (< i (gvector-count vec)) (gvector-set! vec i elm) (raise "IndexError: list assignment index out of range" #t)))
 (define (gvector-pop! vec i) (define ret (gvector-ref vec i)) (gvector-remove! vec i)ret)
+(define (gvector-access vec i) (if (>= i 0) (gvector-ref vec i) (gvector-ref vec (+ (gvector-count vec) i))))
 """.strip()
+
+    TO_INT = '(define (int x)(cond ((number? x) (exact-floor x)) ((string? x) (exact-floor (string->number x))) ((boolean? x) (if x 1 0))))'
+    
+    TO_FLOAT = '(define (float x)(cond ((number? x) (exact->inexact x)) ((string? x) (exact->inexact (string->number x))) ((boolean? x) (if x 1.0 0.0))))'
+    
+    TO_STR = '(define (str x)(cond ((number? x) (number->string x)) ((string? x) x) ((boolean? x) (if x "True" "False"))))'
+    
+    TO_BOOL = '(define (bool x)(cond ((number? x) (!= x 0)) ((string? x) (!= x "")) ((boolean? x) x)))'
 
 class FlagRequirements():
     requirements = {
@@ -19,7 +28,11 @@ class FlagRequirements():
         'EQUAL'           : set(),
         'NOT_EQUAL'       : set(),
         'INPUT'           : set(),
-        'GROWABLE_VECTOR' : set()
+        'GROWABLE_VECTOR' : set(),
+        'TO_INT'          : set(),
+        'TO_FLOAT'        : set(),
+        'TO_STR'          : set(),
+        'TO_BOOL'         : set(['NOT_EQUAL']),
     }
 
 class Arts():

@@ -40,6 +40,14 @@ class Converter():
             compilerCode += f"{extraC.NOT_EQUAL}\n"
         if 'INPUT' in buildFlags:
             compilerCode += f"{extraC.INPUT}\n"
+        if 'TO_INT' in buildFlags:
+            compilerCode += f"{extraC.TO_INT}\n"
+        if 'TO_FLOAT' in buildFlags:
+            compilerCode += f"{extraC.TO_FLOAT}\n"
+        if 'TO_STR' in buildFlags:
+            compilerCode += f"{extraC.TO_STR}\n"
+        if 'TO_BOOL' in buildFlags:
+            compilerCode += f"{extraC.TO_BOOL}\n"
         
         if compilerCode == "":
             return userCode.strip()

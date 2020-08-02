@@ -517,16 +517,82 @@ class _Builder():
                 }
                 
                 return attributes.get(attr, error)(node, name, nType)
-        
+
+            #* TYPE-CONVERTERS
+            
+            # 'int'   : Typer.TFunction([Typer.TUnion([int, float, str, bool])],       kwArgs=[], vararg=False, ret=int),
+            # 'float' : Typer.TFunction([Typer.TUnion([float, int, str, bool])],         kwArgs=[], vararg=False, ret=float),
+            # 'str'   : Typer.TFunction([Typer.TUnion([str, int, float, bool])], kwArgs=[], vararg=False, ret=str),
+            # 'bool'  : Typer.TFunction([Typer.TUnion([bool, int, float, str])],  kwArgs=[], vararg=False, ret=bool)
+            
+            @staticmethod
+            def int(node: Call) -> Tuple[str, type]:
+                Builder.buildFlags['TO_INT'] = True
+                accepted = [float, str, bool]
+                if not (lArgs := len(node.args)) == 1:
+                    raise TypeError(f"builtin typeConverter int takes 1 arguments, {lArgs} provided")
+                
+                argV, argT = Builder.buildFromNodeType(node.args[0])
+                if argT not in accepted:
+                    raise TypeError(f"builtin typeConverter int takes {accepted}, {argT} provided")
+                
+                return f"(int {argV})", int
+
+            @staticmethod
+            def float(node: Call) -> Tuple[str, type]:
+                Builder.buildFlags['TO_FLOAT'] = True
+                accepted = [float, int, str, bool]
+                if not (lArgs := len(node.args)) == 1:
+                    raise TypeError(f"builtin typeConverter float takes 1 arguments, {lArgs} provided")
+                
+                argV, argT = Builder.buildFromNodeType(node.args[0])
+                if argT not in accepted:
+                    raise TypeError(f"builtin typeConverter float takes {accepted}, {argT} provided")
+                
+                return f"(float {argV})", float
+            
+            @staticmethod
+            def str(node: Call) -> Tuple[str, type]:
+                Builder.buildFlags['TO_STR'] = True
+                accepted = [str, int, float, bool]
+                if not (lArgs := len(node.args)) == 1:
+                    raise TypeError(f"builtin typeConverter str takes 1 arguments, {lArgs} provided")
+                
+                argV, argT = Builder.buildFromNodeType(node.args[0])
+                if argT not in accepted:
+                    raise TypeError(f"builtin typeConverter str takes {accepted}, {argT} provided")
+                
+                return f"(str {argV})", str
+            
+            @staticmethod
+            def bool(node: Call) -> Tuple[str, type]:
+                Builder.buildFlags['TO_BOOL'] = True
+                accepted = [bool, int, float, str]
+                if not (lArgs := len(node.args)) == 1:
+                    raise TypeError(f"builtin typeConverter bool takes 1 arguments, {lArgs} provided")
+                
+                argV, argT = Builder.buildFromNodeType(node.args[0])
+                if argT not in accepted:
+                    raise TypeError(f"builtin typeConverter bool takes {accepted}, {argT} provided")
+                
+                return f"(bool {argV})", bool
+            
+            
         if not isinstance(node.func, Attribute):
+            #? Normal call
             specials: Dict[str, Callable[[Call], Tuple[str, type]]] = {
-                'print': CallResolver.print,
-                'range': CallResolver.range,
-                'input': CallResolver.input
+                'print' : CallResolver.print,
+                'range' : CallResolver.range,
+                'input' : CallResolver.input,
+                'int'   : CallResolver.int,
+                'float' : CallResolver.float,
+                'str'   : CallResolver.str,
+                'bool'  : CallResolver.bool
             }
             
             return specials.get(Builder.buildFromNode(node.func), CallResolver.normal)(node)
         else:
+            #? Attributes
             def error(node: Call, name: str, nType: type, attr: str):
                 raise TypeError(f"object of type {nType} does not have any attribute functions")
             
@@ -771,17 +837,12 @@ class _Builder():
             @staticmethod
             def TList(name: str, nType: type, slice: Union[Index, Slice]) -> Tuple[str, type]:
                 if isinstance(slice, Index):
-                    index = Builder.buildFromNode(slice)
-                    try:
-                        index = int(Builder.buildFromNode(slice))
-                        
-                        if index < 0:
-                            index = f"(- (gvector-count r) {-index})"
-                        
-                    except ValueError:
-                        raise TypeError(f"instance of type {type(index)} can not be used to index into a list")
+                    index, indexT = Builder.buildFromNodeType(slice)
                     
-                    return f"(gvector-ref {name} {index})", nType.contained
+                    if indexT != int:
+                        raise TypeError(f"instance of type {indexT} can not be used to index into a list")
+                    
+                    return f"(gvector-access {name} {index})", nType.contained
                 elif isinstance(slice, Slice):
                     raise NotImplementedError("Advanced slicing is not yet implemented for lists")
                 else:
@@ -801,9 +862,9 @@ class _Builder():
         return ret
     
     @staticmethod
-    def Index(node: Index) -> str:
+    def Index(node: Index) -> Tuple[str, int]:
         if isinstance(node.value, Name) or isinstance(node.value, Constant) or isinstance(node.value, UnaryOp):
-            return Builder.buildFromNode(node.value)
+            return Builder.buildFromNodeType(node.value)
         else:
             raise TypeError(f"value of type {type(node.value)} can not be used as an index")
     
@@ -946,11 +1007,15 @@ class Builder():
         'NOT_EQUAL'       : False, # Include != function
         'INPUT'           : False, # Include input function
         'GROWABLE_VECTOR' : False, # Include growableVectors (std)
+        'TO_INT'          : False, # Include to int converter
+        'TO_FLOAT'        : False, # Include to float converter
+        'TO_STR'          : False, # Include to str converter
+        'TO_BOOL'         : False, # Include to bool converter
     }
     
     config = {
         'TYPES_STRICT' : True,
-        'DEBUG'        : False
+        'DEBUG'        : True
     }
     
     defaultWidenedState = {}
@@ -1215,6 +1280,14 @@ class _Typer():
                 raise TypeError(f"subscript-type {node.value.id} is not supported")
             
             @staticmethod
+            def normal(node: Subscript) -> type:
+                if Builder.inState(node.value.id):
+                    if isinstance((listT := Builder.getStateKey(node.value.id)), Typer.TList):
+                        return listT.contained
+                    
+                return _Typer.LiteralSubscriptResolver.error(node)
+            
+            @staticmethod
             def List(node: Subscript) -> type:
                 return Typer.TList(_Typer._literalAnnotation(node.slice.value))
         
@@ -1222,7 +1295,7 @@ class _Typer():
             'List': LiteralSubscriptResolver.List,
         }
         
-        return specials.get(node.value.id, LiteralSubscriptResolver.error)(node)
+        return specials.get(node.value.id, LiteralSubscriptResolver.normal)(node)
 
     @staticmethod
     def _literalAnnotation(node: AST) -> type:
@@ -1240,6 +1313,14 @@ class _Typer():
     @staticmethod
     def Subscript(node: Subscript) -> type:
         return _Typer._literalSubscript(node)
+
+    @staticmethod
+    def Call(node: Call):
+        if isinstance(node.func, Name) or isinstance(node.func, Attribute):
+            _, rType = Builder.buildFromNodeType(node)
+            return rType
+
+        return _Typer.error(node)
 
 class Typer():
     
@@ -1316,6 +1397,7 @@ class Typer():
         Name      : _Typer.Name,
         AnnAssign : _Typer.AnnAssign,
         Subscript : _Typer.Subscript,
+        Call      : _Typer.Call,
         arg       : _Typer.arg
     }
     
@@ -1441,9 +1523,6 @@ class Typer():
             return type1
         
         raise TypeError(f"can not merge types {type1} and {type2}")
-
-
-
 
 
 class IfLiteralResolver():
