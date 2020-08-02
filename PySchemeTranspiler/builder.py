@@ -459,7 +459,38 @@ class _Builder():
                     node.args.append(Constant(value="", kind=None))
                 
                 return CallResolver.normal(node)
-
+    
+            @staticmethod
+            def len(node: Call) -> Tuple[str, type]:
+                class lenResolver():
+                    @staticmethod
+                    def error(value: str, vType: type) -> str:
+                        raise TypeError(f"object of type '{vType}' has no len()")
+                    
+                    @staticmethod
+                    def str(value: str, vType: type) -> str:
+                        return f"(string-length {value})"
+                    
+                    @staticmethod
+                    def TList(value: str, vType: type) -> str:
+                        return f"(gvector-count {value})"
+                
+                
+                if not (lArgs := len(node.args)) == 1:
+                    raise TypeError(f"builtin len takes 1 argument, {lArgs} provided")
+                
+                value, vType = Builder.buildFromNodeType(node.args[0])
+                
+                if isinstance(vType, Typer.T):
+                    vType = type(vType)
+                
+                switcher: Dict[type, Callable[[str, type], str]] = {
+                    str         : lenResolver.str,
+                    Typer.TList : lenResolver.TList
+                }
+                
+                return switcher.get(vType, lenResolver.error)(value, vType), int
+                
             #* ATTRIBUTES
 
             @staticmethod
@@ -503,17 +534,17 @@ class _Builder():
                     
                     return f"(gvector-insert! {name} {index} {value})", Typer.Null()
                 
-                def count(node: Call, name: str, nType: Typer.TList) -> Tuple[str, type]:
-                    if not (args := len(node.args)) == 0:
-                        raise ValueError(f"count on list takes no positional argument, {args} provided")
+                # def count(node: Call, name: str, nType: Typer.TList) -> Tuple[str, type]:
+                #     if not (args := len(node.args)) == 0:
+                #         raise ValueError(f"count on list takes no positional argument, {args} provided")
                     
-                    return f"(gvector-count {name})", int
+                #     return f"(gvector-count {name})", int
                 
                 attributes: Dict[str, Callable[[Call], Tuple[str, type]]] = {
                     'append' : append,
                     'pop'    : pop,
                     'insert' : insert,
-                    'count'  : count
+                    # 'count'  : count
                 }
                 
                 return attributes.get(attr, error)(node, name, nType)
@@ -584,10 +615,11 @@ class _Builder():
                 'print' : CallResolver.print,
                 'range' : CallResolver.range,
                 'input' : CallResolver.input,
+                'len'   : CallResolver.len,
                 'int'   : CallResolver.int,
                 'float' : CallResolver.float,
                 'str'   : CallResolver.str,
-                'bool'  : CallResolver.bool
+                'bool'  : CallResolver.bool,
             }
             
             return specials.get(Builder.buildFromNode(node.func), CallResolver.normal)(node)
@@ -1015,7 +1047,7 @@ class Builder():
     
     config = {
         'TYPES_STRICT' : True,
-        'DEBUG'        : True
+        'DEBUG'        : False
     }
     
     defaultWidenedState = {}
@@ -1095,6 +1127,7 @@ class Builder():
             'PRINT' : Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None),
             'input' : Typer.TFunction([str], kwArgs=[], vararg=False, ret=str),
             'range' : Typer.TFunction([int], kwArgs=[], vararg=True, ret=Typer.TList(int, native=True)), #? We set this to vararg as we specifically check this case
+            'len'   : Typer.TFunction([Typer.TUnion([str, Typer.TList])], kwArgs=[], vararg=False, ret=int)
             #? No primitive types should be shadowed by their corresponding caster functionTypes! This is just help for the developer
             # 'int'   : Typer.TFunction([Typer.TUnion([float, str, bool])],       kwArgs=[], vararg=False, ret=int),
             # 'float' : Typer.TFunction([Typer.TUnion([int, str, bool])],         kwArgs=[], vararg=False, ret=float),
