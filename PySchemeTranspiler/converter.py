@@ -1,3 +1,18 @@
+# PySchemeTranspiler, Transpile simple Python to Scheme(Racket)
+# Copyright (C) 2020  Rubin Raithel
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from typing import TextIO, Dict, Set
 
 from .parser import Parser
@@ -11,7 +26,6 @@ class Converter():
     def transpile(file: TextIO) -> str:
         #* Basic setup
         Shared.currentFile = file.name
-        Converter.welcome()
         
         #* Pase file to tokens
         toks = Parser.parseFile(file).body
@@ -69,7 +83,8 @@ class Converter():
         """Welcome the user with a nice greeting
         """
         Converter.displayArt()
-        print(colorT("PySchemeTranspiler v1.0 by Rubin Raithel\n\n", Colors.GREEN))
+        print(colorT("PySchemeTranspiler v1.0  Copyright (C) 2020 Rubin Raithel", Colors.GREEN))
+        print(colorT("This program comes with ABSOLUTELY NO WARRANTY. For details see LICENSE)\n\n", Colors.GREEN))
     
     @staticmethod
     def displayArt() -> None:
