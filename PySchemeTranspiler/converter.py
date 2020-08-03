@@ -83,8 +83,8 @@ class Converter():
         """Welcome the user with a nice greeting
         """
         Converter.displayArt()
-        print(colorT("PySchemeTranspiler v1.0  Copyright (C) 2020 Rubin Raithel", Colors.GREEN))
-        print(colorT("This program comes with ABSOLUTELY NO WARRANTY. For details see LICENSE)\n\n", Colors.GREEN))
+        print(colorT("PySchemeTranspiler v1.0, Copyright (C) 2020 Rubin Raithel", Colors.GREEN))
+        print(colorT("This program comes with ABSOLUTELY NO WARRANTY. For details see the 'LICENSE' file.\n\n", Colors.GREEN))
     
     @staticmethod
     def displayArt() -> None:
