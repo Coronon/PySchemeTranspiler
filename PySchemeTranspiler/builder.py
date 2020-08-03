@@ -148,9 +148,13 @@ class _Builder():
         
         #* Body
         with TempState('__returnType__', retType):
-            body = ""
-            for i in node.body:
-                body += Builder.buildFromNode(i)
+            with TempState('__didReturn__', False):
+                body = ""
+                for i in node.body:
+                    body += Builder.buildFromNode(i)
+                
+                if not Builder.getStateKeyLocal('__didReturn__'):
+                    raise ValueError("Please ensure your function returns at least 'None' on every path")
             
         Builder.popState()
         return f'(define ({name} {args}) {body})'
@@ -191,6 +195,7 @@ class _Builder():
         if not Typer.isTypeCompatible(vType, (sType := Builder.getStateKeyLocal('__returnType__'))):
             raise TypeError(f"Type {sType} and {vType} are incompatible for return value")
         
+        Builder.setStateKey('__didReturn__', True)
         return value
     
     @staticmethod
@@ -622,49 +627,56 @@ class _Builder():
                     raise TypeError(f"builtin typeConverter bool takes {accepted}, {argT} provided")
                 
                 return f"(bool {argV})", bool
-            
-            
-        if not isinstance(node.func, Attribute):
-            #? Normal call
-            specials: Dict[str, Callable[[Call], Tuple[str, type]]] = {
-                'print' : CallResolver.print,
-                'range' : CallResolver.range,
-                'input' : CallResolver.input,
-                'len'   : CallResolver.len,
-                'int'   : CallResolver.int,
-                'float' : CallResolver.float,
-                'str'   : CallResolver.str,
-                'bool'  : CallResolver.bool,
-            }
-            
-            return specials.get(Builder.buildFromNode(node.func), CallResolver.normal)(node)
-        else:
-            #? Attributes
-            def error(node: Call, name: str, nType: type, attr: str):
-                raise TypeError(f"object of type {nType} does not have any attribute functions")
-            
-            def fetchInfoFromAttribute(node: Attribute) -> Tuple[str, type, str]:
-                """Get basic info from Attribute
-
-                Arguments:
-                    node {Attribute} -- Attribute to analyze
-
-                Returns:
-                    Tuple[str, type, str] -- VariableName, VariableType, AttributeCallName
-                """
-                if not isinstance(node.value, Name):
-                    raise TypeError(f"node of type {type(node.value)} may not use attributes")
+        
+        ret = None
+        with TempState('__resolveAsIf__', False):
+            if not isinstance(node.func, Attribute):
+                #? Normal call
+                specials: Dict[str, Callable[[Call], Tuple[str, type]]] = {
+                    'print' : CallResolver.print,
+                    'range' : CallResolver.range,
+                    'input' : CallResolver.input,
+                    'len'   : CallResolver.len,
+                    'int'   : CallResolver.int,
+                    'float' : CallResolver.float,
+                    'str'   : CallResolver.str,
+                    'bool'  : CallResolver.bool,
+                }
                 
-                name, nType = Builder.buildFromNodeType(node.value)
-                return name, nType, node.attr
+                ret = specials.get(Builder.buildFromNode(node.func), CallResolver.normal)(node)
+            else:
+                #? Attributes
+                def error(node: Call, name: str, nType: type, attr: str):
+                    raise TypeError(f"object of type {nType} does not have any attribute functions")
+                
+                def fetchInfoFromAttribute(node: Attribute) -> Tuple[str, type, str]:
+                    """Get basic info from Attribute
 
-            name, nType, attr = fetchInfoFromAttribute(node.func)
-            
-            types: Dict[str, Callable[[Call], Tuple[str, type]]] = {
-                Typer.TList: CallResolver.TList,
-            }
-            
-            return types.get(type(nType), error)(node, name, nType, attr)
+                    Arguments:
+                        node {Attribute} -- Attribute to analyze
+
+                    Returns:
+                        Tuple[str, type, str] -- VariableName, VariableType, AttributeCallName
+                    """
+                    if not isinstance(node.value, Name):
+                        raise TypeError(f"node of type {type(node.value)} may not use attributes")
+                    
+                    name, nType = Builder.buildFromNodeType(node.value)
+                    return name, nType, node.attr
+
+                name, nType, attr = fetchInfoFromAttribute(node.func)
+                
+                types: Dict[str, Callable[[Call], Tuple[str, type]]] = {
+                    Typer.TList: CallResolver.TList,
+                }
+                
+                ret = types.get(type(nType), error)(node, name, nType, attr)
+        
+        #? Check if we should resolve as a literal if
+        if Builder.getStateKeyLocal('__resolveAsIf__'):
+            return IfLiteralResolver.resolve(*ret)
+        
+        return ret
             
     @staticmethod
     def keyword(node: Keyword) -> Tuple[str, type]:
@@ -1155,7 +1167,8 @@ class Builder():
             '__definitionsClaim__': False, #? Flag for transpiler to communicate root(if/loop) lock
             '__definitions__'     : [],    #? Used to store local definitions to make them persistent on lvl of root(if/loop)
             '__assignSkipValue__' : False, #? Flag for transpiler to not include value in assignment
-            '__resolveAsIf__'     : False, #? Flag fot transpiler to resolve constant and name as their basic testCase
+            '__resolveAsIf__'     : False, #? Flag for transpiler to resolve constant and name as their basic testCase
+            '__didReturn__'       : False, #? Flag for transpiler to indicate that a function has a return
         }
         
         Builder.setState({**defaultRootExclusiveState, **Builder.defaultWidenedState})
@@ -1370,6 +1383,10 @@ class _Typer():
 
         return _Typer.error(node)
 
+    @staticmethod
+    def NoneType(node: None) -> type:
+        return None
+
 class Typer():
     
     class T():
@@ -1441,12 +1458,13 @@ class Typer():
             return str(f"<{self.type}...>")
     
     switcher: Dict[type, Callable] = {
-        Constant  : _Typer.Constant,
-        Name      : _Typer.Name,
-        AnnAssign : _Typer.AnnAssign,
-        Subscript : _Typer.Subscript,
-        Call      : _Typer.Call,
-        arg       : _Typer.arg
+        Constant   : _Typer.Constant,
+        Name       : _Typer.Name,
+        AnnAssign  : _Typer.AnnAssign,
+        Subscript  : _Typer.Subscript,
+        Call       : _Typer.Call,
+        type(None) : _Typer.NoneType,
+        arg        : _Typer.arg
     }
     
     restricted: List[type] = [list, dict, TList]
@@ -1575,8 +1593,8 @@ class Typer():
 
 class IfLiteralResolver():
     @staticmethod
-    def error(vType: type):
-        raise TypeError(f"can not use instance of type {vType} in a literal if")
+    def error(value: str):
+        raise TypeError(f"can not use instance '{value}' in a literal if")
     
     @staticmethod
     def bool(value: str) -> Tuple[str, type]:
@@ -1603,14 +1621,19 @@ class IfLiteralResolver():
         return f"(!= (gvector-count {value}) 0)", bool
     
     @staticmethod
+    def TFunction(value: str) -> Tuple[str, type]:
+        raise TypeError("can not use instance of type TFunction in a literal if")
+    
+    @staticmethod
     def resolve(value: str, vType: type) -> Tuple[str, type]:
         switcher: Dict[type, Callable] = {
-            bool        : IfLiteralResolver.bool,
-            int         : IfLiteralResolver.int,
-            float       : IfLiteralResolver.float,
-            str         : IfLiteralResolver.str,
-            None        : IfLiteralResolver.NoneType,
-            Typer.TList : IfLiteralResolver.TList,
+            bool            : IfLiteralResolver.bool,
+            int             : IfLiteralResolver.int,
+            float           : IfLiteralResolver.float,
+            str             : IfLiteralResolver.str,
+            None            : IfLiteralResolver.NoneType,
+            Typer.TList     : IfLiteralResolver.TList,
+            Typer.TFunction : IfLiteralResolver.TFunction,
         }
         
         Builder.buildFromNode(NotEq()) #? Let _Builder.NotEq handle buildFlags to not spread functionality even more
