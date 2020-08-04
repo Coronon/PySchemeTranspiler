@@ -15,12 +15,17 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import setuptools
 
+with open("README.md", "r") as fh:
+    long_description = fh.read()
+
 setuptools.setup(
     name="PySchemeTranspiler",
     version="1.0",
     author="Rubin Raithel",
     author_email="dev@rubinraithel.de",
     description="Transpile simple Python to Scheme(Racket)",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
     url="https://github.com/Coronon/PySchemeTranspiler",
     packages=setuptools.find_packages(),
     classifiers=[
