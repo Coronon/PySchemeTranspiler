@@ -77,4 +77,3 @@ PYST is currently not available on the PyPi and can therefore only be installed 
 PYST is currently licensed under the [GPLv3](https://www.gnu.org/licenses/gpl-3.0.en.html) license.
 
 Copyright (C) 2020 Rubin Raithel
-
