@@ -32,7 +32,7 @@ class Converter():
         
         Builder.initState()
         
-        compilerCode = ""
+        compilerCode = "#lang racket\n"
         userCode = ""
         
         #* Transpile tokens to scheme sourcecode one by one
