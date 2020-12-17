@@ -285,11 +285,16 @@ class _Builder():
                         if isinstance(slice, Index):
                             index = Builder.buildFromNode(slice)
                             try:
-                                index = int(Builder.buildFromNode(slice))
+                                index, indexT = Builder.buildFromNodeType(slice)
                                 
-                                if index < 0:
-                                    index = f"(- (length r) {-index})"
-                                
+                                if indexT is int and isinstance(index, int):
+                                    if index < 0:
+                                        index = f"(- (gvector-count {name}) {-index})"
+                                elif indexT is int and isinstance(index, str):
+                                    index = f"(if (< {index} 0) (- (gvector-count {name}) (- {index})) {index})"
+                                else:
+                                    raise ValueError()
+                        
                             except ValueError:
                                 raise TypeError(f"instance of type {type(index)} can not be used to index into a list")
                             
@@ -533,7 +538,16 @@ class _Builder():
                         raise ValueError(f"pop on list takes 1 positional argument, {args} provided")
                     
                     try:
-                        index = int(Builder.buildFromNode(node.args[0]))
+                        index, indexT = Builder.buildFromNodeType(node.args[0])
+                        
+                        if indexT is int and isinstance(index, int):
+                            if index < 0:
+                                index = f"(- (gvector-count {name}) {-index})"
+                        elif indexT is int and isinstance(index, str):
+                            index = f"(if (< {index} 0) (- (gvector-count {name}) (- {index})) {index})"
+                        else:
+                            raise ValueError()
+                        
                     except ValueError:
                         raise TypeError(f"instance of type {type(index)} can not be used to index into a list")
                     
@@ -544,9 +558,19 @@ class _Builder():
                         raise ValueError(f"insert on list takes 2 positional arguments, {args} provided")
                     
                     try:
-                        index = int(Builder.buildFromNode(node.args[0]))
+                        index, indexT = Builder.buildFromNodeType(node.args[0])
+                        
+                        if indexT is int and isinstance(index, int):
+                            if index < 0:
+                                index = f"(- (gvector-count {name}) {-index})"
+                        elif indexT is int and isinstance(index, str):
+                            index = f"(if (< {index} 0) (- (gvector-count {name}) (- {index})) {index})"
+                        else:
+                            raise ValueError()
+                        
                     except ValueError:
                         raise TypeError(f"instance of type {type(index)} can not be used to index into a list")
+                    
                     
                     value, vType = Builder.buildFromNodeType(node.args[1])
                     if not Typer.isTypeCompatible(vType, nType.contained):
@@ -688,7 +712,7 @@ class _Builder():
         def handleAssign(node: Assign) -> str:
             with TempState('__assignSkipValue__', True):
                 possibleDefine = Builder.buildFromNode(node)
-            if possibleDefine[:5] != "(set!":
+            if not (len(possibleDefine) >= 5 and possibleDefine[:5] == "(set!") and not (len(possibleDefine) >= 18 and possibleDefine[:18] == "(safe-gvector-set!"):
                 Builder.setStateKey(
                     '__definitions__',
                     [*Builder.getStateKeyLocal('__definitions__'), possibleDefine]
@@ -896,10 +920,19 @@ class _Builder():
             @staticmethod
             def TList(name: str, nType: type, slice: Union[Index, Slice]) -> Tuple[str, type]:
                 if isinstance(slice, Index):
-                    index, indexT = Builder.buildFromNodeType(slice)
-                    
-                    if indexT != int:
-                        raise TypeError(f"instance of type {indexT} can not be used to index into a list")
+                    try:
+                        index, indexT = Builder.buildFromNodeType(slice)
+                        
+                        if indexT is int and isinstance(index, int):
+                            if index < 0:
+                                index = f"(- (gvector-count {name}) {-index})"
+                        elif indexT is int and isinstance(index, str):
+                            index = f"(if (< {index} 0) (- (gvector-count {name}) (- {index})) {index})"
+                        else:
+                            raise ValueError()
+                        
+                    except ValueError:
+                        raise TypeError(f"instance of type {type(index)} can not be used to index into a list")
                     
                     return f"(gvector-access {name} {index})", nType.contained
                 elif isinstance(slice, Slice):
@@ -922,7 +955,7 @@ class _Builder():
     
     @staticmethod
     def Index(node: Index) -> Tuple[str, int]:
-        if isinstance(node.value, Name) or isinstance(node.value, Constant) or isinstance(node.value, UnaryOp):
+        if isinstance(node.value, Name) or isinstance(node.value, Constant) or isinstance(node.value, UnaryOp) or isinstance(node.value, BinOp):
             return Builder.buildFromNodeType(node.value)
         else:
             raise TypeError(f"value of type {type(node.value)} can not be used as an index")
@@ -937,7 +970,7 @@ class _Builder():
         def handleAssign(node: Assign) -> str:
             with TempState('__assignSkipValue__', True):
                 possibleDefine = Builder.buildFromNode(node)
-            if possibleDefine[:5] != "(set!":
+            if not (len(possibleDefine) >= 5 and possibleDefine[:5] == "(set!") and not (len(possibleDefine) >= 18 and possibleDefine[:18] == "(safe-gvector-set!"):
                 Builder.setStateKey(
                 '__definitions__',
                 [*Builder.getStateKeyLocal('__definitions__'), possibleDefine]
