@@ -1,6 +1,8 @@
 
 # PySchemeTranspiler
 
+*This transpiler is only working in Python version 3.8.\* due to changes in the AST module from 3.9 onwards*
+
 PYST is a transpiler between python and Scheme(Racket) source code. It tries to mimic the behavior of CPython and makes simple builtin functions available to the user. It works solely with the Python builtin AST module and does not have any dependencies. 
 
 ### Work in Progress
