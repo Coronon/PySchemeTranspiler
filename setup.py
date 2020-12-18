@@ -20,7 +20,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="PySchemeTranspiler",
-    version="1.0",
+    version="1.1",
     author="Rubin Raithel",
     author_email="dev@rubinraithel.de",
     description="Transpile simple Python to Scheme(Racket)",
@@ -33,7 +33,7 @@ setuptools.setup(
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
         "Operating System :: OS Independent",
     ],
-    python_requires='>=3.8',
+    python_requires='== 3.8.*',
     entry_points = {
         "console_scripts": ['pystranspile = pyschemetranspiler.run:main']
         },
