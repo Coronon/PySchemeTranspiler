@@ -786,8 +786,6 @@ class _Builder():
             else:
                 return f"(cond {' '.join(paths)})"
         else:
-            Builder.setStateKey('__if__', False)
-            
             defs = Builder.getStateKeyLocal('__definitions__')
             Builder.setStateKey('__definitions__', [])
             Builder.setStateKey('__definitionsClaim__', False)
@@ -1213,7 +1211,6 @@ class Builder():
             # 'bool'  : Typer.TFunction([Typer.TUnion([int, float, str, list])],  kwArgs=[], vararg=False, ret=bool)
         }
         Builder.defaultWidenedState = {
-            '__if__'              : False, #? Flag for transpiler if in an active if statement
             '__for__'             : False, #? Flag for transpiler if in an active loop
             '__pathDidReturn__'   : set(), #? Used to check that all paths in nested if/loop have same return behaviour
             '__innerBody__'       : False, #? Flag for transpiler if currently in an if body
