@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
-from typing import Dict, List, Tuple, Union, Callable, Any
+from typing import Dict, List as ListType, Tuple, Union, Callable, Any
 
 from ast import (
     AST,
@@ -105,7 +105,7 @@ class _Builder():
         argTypesDef = []
         argTypesKey = {}
         
-        setStateQueue: List[Tuple[str, type]] = []
+        setStateQueue: ListType[Tuple[str, type]] = []
         
         argsLen     = len(node.args.args)
         defaultsLen = len(node.args.defaults)
@@ -418,7 +418,7 @@ class _Builder():
                 
                 #* Parse arguments
                 #? Default args
-                argListDef: List[Tuple[str, type]] = []
+                argListDef: ListType[Tuple[str, type]] = []
                 for arg in node.args:
                     argListDef.append(Builder.buildFromNodeType(arg))
                 
@@ -437,7 +437,7 @@ class _Builder():
                     return argument.split(" ")[0][2:]
                 
                 #Tuple[kwName, kwCode, kwType]
-                argListKey: List[Tuple[str, str, type]] = []
+                argListKey: ListType[Tuple[str, str, type]] = []
                 for arg in node.keywords:
                     value, vType = Builder.buildFromNodeType(arg)
                     argListKey.append((getKeywordName(value), value, vType))
@@ -721,7 +721,7 @@ class _Builder():
             
             return possibleDefine
         
-        paths: List[str] = []
+        paths: ListType[str] = []
         body = ""
         
         #* Check if hierarchy
@@ -1113,7 +1113,7 @@ class Builder():
     defaultWidenedState = {}
     
     #? For default state see `Builder.initState()`
-    stateHistory: List[Dict[str, Any]] = [{}]
+    stateHistory: ListType[Dict[str, Any]] = [{}]
     
     currentNode: AST = None
     
@@ -1449,7 +1449,7 @@ class Typer():
     class TFunction(T):
         type = "TFunction"
         
-        def __init__(self, args: List[type], kwArgs: Dict[str, type], vararg: bool, ret: type):
+        def __init__(self, args: ListType[type], kwArgs: Dict[str, type], vararg: bool, ret: type):
             self.args   = args
             self.kwArgs = kwArgs
             self.vararg = vararg
@@ -1469,7 +1469,7 @@ class Typer():
     class TUnion(T):
         type = "TUnion"
 
-        def __init__(self, anyOf: List[type]):
+        def __init__(self, anyOf: ListType[type]):
             self.anyOf = anyOf
         
         def __repr__(self):
@@ -1500,7 +1500,7 @@ class Typer():
         arg        : _Typer.arg
     }
     
-    restricted: List[type] = [list, dict, TList]
+    restricted: ListType[type] = [list, dict, TList]
     
     @staticmethod
     def deduceTypeFromNode(node: AST) -> type:
