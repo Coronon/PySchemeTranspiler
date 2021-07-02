@@ -67,7 +67,7 @@ PYST will intentionally fail when an incorrect usage of `return` could lead to u
       -input INPUT    path to file that should be transpiled
       -output OUTPUT  path to file the transpiled code should be saved in
     
-    Copyright (C) 2020 Rubin Raithel
+    Copyright (C) 2021 Rubin Raithel
 You may abbreviate the above mentioned flags to `-i`, `-o` and `-v`.
 PYST is installed as a globally available script and does therefore not require the `python3` prefix but can still be invoked with it by typing `python3 -m pyschemetranspiler`.
 
@@ -80,4 +80,4 @@ PYST is currently not available on the PyPi and can therefore only be installed 
 ## License
 PYST is currently licensed under the [GPLv3](https://www.gnu.org/licenses/gpl-3.0.en.html) license.
 
-Copyright (C) 2020 Rubin Raithel
+Copyright (C) 2021 Rubin Raithel

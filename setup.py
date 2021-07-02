@@ -1,5 +1,5 @@
 # PySchemeTranspiler, Transpile simple Python to Scheme(Racket)
-# Copyright (C) 2020  Rubin Raithel
+# Copyright (C) 2021  Rubin Raithel
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -20,7 +20,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="PySchemeTranspiler",
-    version="1.1",
+    version="1.2",
     author="Rubin Raithel",
     author_email="dev@rubinraithel.de",
     description="Transpile simple Python to Scheme(Racket)",
