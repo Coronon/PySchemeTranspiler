@@ -18,6 +18,7 @@ There might still be special edge cases not documented that can cause faulty tra
  - Builtins (*print*, *input*, *range*, *len*; Type converters: *int*, *float*, *str*, *bool*)
  - Types: int, float, str, bool, None, List[{Type}] (Indexing + append, pop and insert)
  - If, elif, else (also nested) (comparators eg. `!=` `==` `>=` but not `is` or `is not`)
+ - If expressions (`var = a if b else c`)
  - For (also nested)
 
 ### Typing system
@@ -52,6 +53,7 @@ else:
 	return None
 ```
 Note that the else is mandatory here as the first return would fall through to the `None` return otherwise.
+PYST will intentionally fail when an incorrect usage of `return` could lead to unexpected behavior.
 
 ## Usage
 
