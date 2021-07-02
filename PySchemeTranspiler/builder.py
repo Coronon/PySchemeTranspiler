@@ -151,6 +151,8 @@ class _Builder():
             with TempState('__didReturn__', False):
                 body = ""
                 for i in node.body:
+                    if Builder.getStateKeyLocal('__didReturn__'):
+                        throw(ValueError("No expressions allowed after 'return': https://github.com/Coronon/PySchemeTranspiler#multiple-returns"), i)
                     body += Builder.buildFromNode(i)
                 
                 if not Builder.getStateKeyLocal('__didReturn__'):
@@ -191,6 +193,9 @@ class _Builder():
     
     @staticmethod
     def Return(node: Return) -> str:
+        if Builder.getStateKeyLocal('__for__'):
+            raise ValueError("Returning inside of loops is not supported")
+            
         value, vType = Builder.buildFromNodeType(node.value)
         if not Typer.isTypeCompatible(vType, (sType := Builder.getStateKeyLocal('__returnType__'))):
             raise TypeError(f"Type {sType} and {vType} are incompatible for return value")
@@ -720,6 +725,32 @@ class _Builder():
                 return Builder.buildFromNode(node)
             
             return possibleDefine
+
+        def buildBody(elements: ListType[AST]) -> str:
+            ret = ""
+            didReturn = False
+            
+            with TempState('__innerBody__', True):
+                for elem in elements:
+                    if didReturn:
+                        throw(ValueError("No expressions allowed after 'return': https://github.com/Coronon/PySchemeTranspiler#multiple-returns"), elem)
+                    
+                    #? Move possible definitions before rootDef in current scope
+                    if isinstance(elem, Assign) or isinstance(elem, AnnAssign):
+                        ret += handleAssign(elem)
+                        continue
+                    #? Make sure all paths have same return behaviour
+                    if isinstance(elem, Return):
+                        didReturn = True
+                        
+                    
+                    ret += Builder.buildFromNode(elem)
+            
+            Builder.setStateKey('__pathDidReturn__', Builder.getStateKeyLocal('__pathDidReturn__') | set([didReturn]))
+            if len(Builder.getStateKeyLocal('__pathDidReturn__')) == 2:
+                raise ValueError("Please ensure all paths have the same return behaviour: https://github.com/Coronon/PySchemeTranspiler#multiple-returns")
+            
+            return ret
         
         paths: ListType[str] = []
         body = ""
@@ -730,15 +761,9 @@ class _Builder():
         if not Builder.getStateKeyLocal('__definitionsClaim__'):
             rootDef = True
             Builder.setStateKey('__definitionsClaim__', True)
+            Builder.setStateKey('__pathDidReturn__', set())
         
-        with TempState('__innerBody__', True):
-            for elem in node.body:
-                #? Move possible definitions before rootDef in current scope
-                if isinstance(elem, Assign) or isinstance(elem, AnnAssign):
-                    body += handleAssign(elem)
-                    continue
-                
-                body += Builder.buildFromNode(elem)
+        body += buildBody(node.body)
         
         if len(body) == 0:
             raise IndentationError("expected an indented block")
@@ -751,15 +776,7 @@ class _Builder():
                 with TempState('__innerBody__', False):
                     paths.append(Builder.buildFromNode(node.orelse[0]))
             else:
-                body = ""
-                with TempState('__innerBody__', True):
-                    for elem in node.orelse:
-                        #? Move possible definitions before rootDef in current scope
-                        if isinstance(elem, Assign) or isinstance(elem, AnnAssign):
-                            body += handleAssign(elem)
-                            continue
-                        
-                        body += Builder.buildFromNode(elem)
+                body = buildBody(node.orelse)
                 paths.append(f"(else {body})")
                 
         
@@ -1021,14 +1038,15 @@ class _Builder():
             rootDef = True
             Builder.setStateKey('__definitionsClaim__', True)
         
-        with TempState('__innerBody__', True):
-            for elem in node.body:
-                #? Move possible definitions before rootDef in current scope
-                if isinstance(elem, Assign) or isinstance(elem, AnnAssign):
-                    body += handleAssign(elem)
-                    continue
-                
-                body += Builder.buildFromNode(elem)
+        with TempState('__for__', True):
+            with TempState('__innerBody__', True):
+                for elem in node.body:
+                    #? Move possible definitions before rootDef in current scope
+                    if isinstance(elem, Assign) or isinstance(elem, AnnAssign):
+                        body += handleAssign(elem)
+                        continue
+                    
+                    body += Builder.buildFromNode(elem)
         
         if len(body) == 0:
             raise IndentationError("expected an indented block")
@@ -1196,6 +1214,8 @@ class Builder():
         }
         Builder.defaultWidenedState = {
             '__if__'              : False, #? Flag for transpiler if in an active if statement
+            '__for__'             : False, #? Flag for transpiler if in an active loop
+            '__pathDidReturn__'   : set(), #? Used to check that all paths in nested if/loop have same return behaviour
             '__innerBody__'       : False, #? Flag for transpiler if currently in an if body
             '__definitionsClaim__': False, #? Flag for transpiler to communicate root(if/loop) lock
             '__definitions__'     : [],    #? Used to store local definitions to make them persistent on lvl of root(if/loop)
