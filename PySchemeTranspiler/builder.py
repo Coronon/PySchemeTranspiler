@@ -54,7 +54,8 @@ from ast import (
     Attribute,
     For,
     ImportFrom,
-    arg
+    arg,
+    IfExp
     )
 
 from .exceptions import throw, warn
@@ -1069,6 +1070,18 @@ class _Builder():
             return _Builder.error(node)
         
         return ""
+    
+    @staticmethod
+    def IfExp(node: IfExp) -> Tuple[str, type]:
+        with TempState('__resolveAsIf__', True):
+            test = Builder.buildFromNode(node.test)
+        
+        body, bodyT = Builder.buildFromNodeType(node.body)
+        orelse, orelseT = Builder.buildFromNodeType(node.orelse)   
+        
+        retType = Typer.mergeTypes(bodyT, orelseT, True)
+
+        return f"(if {test} {body} {orelse})", retType
 
 class Builder():
     Interpreter = Callable[[AST], str]
@@ -1106,7 +1119,8 @@ class Builder():
         Index       : _Builder.Index,
         For         : _Builder.For,
         ImportFrom  : _Builder.ImportFrom,
-        keyword     : _Builder.keyword
+        keyword     : _Builder.keyword,
+        IfExp       : _Builder.IfExp
     }
     
     buildFlags = {
@@ -1613,12 +1627,13 @@ class Typer():
         return test in Typer.restricted or type(test) in Typer.restricted
      
     @staticmethod
-    def mergeTypes(type1: type, type2: type) -> type:
+    def mergeTypes(type1: type, type2: type, equals: bool = False) -> type:
         """Merge two types into one and avoid data loss
 
         Arguments:
-            type1 {type} -- Left type of the merge (original type)
-            type2 {type} -- Right type of the merge (new type)
+            type1 {type}  -- Left type of the merge (original type)
+            type2 {type}  -- Right type of the merge (new type)
+            equals {bool} -- Treat both types equally (no original/new type) (default: False)
 
         Returns:
             type -- Merged type
@@ -1632,6 +1647,10 @@ class Typer():
         
         if isinstance(type1, Typer.TPending):
             return type2
+        
+        #? Equals - TPending
+        if equals and isinstance(type2, Typer.TPending):
+            return type1
         
         if type1 is None:
             return type2
