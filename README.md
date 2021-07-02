@@ -47,10 +47,10 @@ print(willError(my_list))
 Please ensure all paths in all functions return at least `None`. Multiple return statements in functions must be written so that they are the last executed entity in their function, for example with an if statement:
 ```python
 def testFunc(something: int) -> int:
-if something:
-	return something
-else:
-	return None
+  if something:
+    return something
+  else:
+    return None
 ```
 Note that the else is mandatory here as the first return would fall through to the `None` return otherwise.
 PYST will intentionally fail when an incorrect usage of `return` could lead to unexpected behavior.
