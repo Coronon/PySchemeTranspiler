@@ -1652,6 +1652,10 @@ class Typer():
         if equals and isinstance(type2, Typer.TPending):
             return type1
         
+        #? TList
+        if isinstance(type1, Typer.TList) and isinstance(type2, Typer.TList):
+            return Typer.TList(Typer.mergeTypes(type1.contained, type2.contained, equals))
+        
         if type1 is None:
             return type2
         elif type2 is None:
