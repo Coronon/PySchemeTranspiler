@@ -55,7 +55,8 @@ from ast import (
     For,
     ImportFrom,
     arg,
-    IfExp
+    IfExp,
+    Assert
     )
 
 from .exceptions import throw, warn
@@ -1110,6 +1111,15 @@ class _Builder():
 
         return f"(if {test} {body} {orelse})", retType
 
+    @staticmethod
+    def Assert(node: Assert) -> str:
+        test = Builder.buildFromNode(node.test)
+        msg = "AssertionError"
+        if node.msg is not None:
+            customMsg, customMsgT = Builder.buildFromNodeType(node.msg)
+            msg += f": {customMsg if customMsgT is not str else customMsg[1:-1]}"
+        return f'(unless {test} (error "{msg}"))'
+
 class Builder():
     Interpreter = Callable[[AST], str]
     switcher: Dict[type, Callable] = {
@@ -1147,7 +1157,8 @@ class Builder():
         For         : _Builder.For,
         ImportFrom  : _Builder.ImportFrom,
         keyword     : _Builder.keyword,
-        IfExp       : _Builder.IfExp
+        IfExp       : _Builder.IfExp,
+        Assert      : _Builder.Assert
     }
     
     buildFlags = {
