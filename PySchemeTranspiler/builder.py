@@ -714,84 +714,87 @@ class _Builder():
         return f"#:{node.arg} {value}", vType
 
     @staticmethod
-    def If(node: If) -> str:
-        def handleAssign(node: Assign) -> str:
-            with TempState('__assignSkipValue__', True):
-                possibleDefine = Builder.buildFromNode(node)
-            if not (len(possibleDefine) >= 5 and possibleDefine[:5] == "(set!") and not (len(possibleDefine) >= 18 and possibleDefine[:18] == "(safe-gvector-set!"):
-                Builder.setStateKey(
-                    '__definitions__',
-                    [*Builder.getStateKeyLocal('__definitions__'), possibleDefine]
-                    )
-                return Builder.buildFromNode(node)
-            
-            return possibleDefine
+    def If(node: If) -> Tuple[str, bool]:
+        #! The 'bool' in the returned Tuple indicates the return behaviour of this if
+        with TempState('__pathDidReturn__', set()):
+            def handleAssign(node: Assign) -> str:
+                with TempState('__assignSkipValue__', True):
+                    possibleDefine = Builder.buildFromNode(node)
+                if not (len(possibleDefine) >= 5 and possibleDefine[:5] == "(set!") and not (len(possibleDefine) >= 18 and possibleDefine[:18] == "(safe-gvector-set!"):
+                    Builder.setStateKey(
+                        '__definitions__',
+                        [*Builder.getStateKeyLocal('__definitions__'), possibleDefine]
+                        )
+                    return Builder.buildFromNode(node)
 
-        def buildBody(elements: ListType[AST]) -> str:
-            ret = ""
-            didReturn = False
-            
-            with TempState('__innerBody__', True):
-                for elem in elements:
-                    if didReturn:
-                        throw(ValueError("No expressions allowed after 'return': https://github.com/Coronon/PySchemeTranspiler#multiple-returns"), elem)
-                    
-                    #? Move possible definitions before rootDef in current scope
-                    if isinstance(elem, Assign) or isinstance(elem, AnnAssign):
-                        ret += handleAssign(elem)
-                        continue
-                    #? Make sure all paths have same return behaviour
-                    if isinstance(elem, Return):
-                        didReturn = True
-                        
-                    
-                    ret += Builder.buildFromNode(elem)
-            
-            Builder.setStateKey('__pathDidReturn__', Builder.getStateKeyLocal('__pathDidReturn__') | set([didReturn]))
-            if len(Builder.getStateKeyLocal('__pathDidReturn__')) == 2:
-                raise ValueError("Please ensure all paths have the same return behaviour: https://github.com/Coronon/PySchemeTranspiler#multiple-returns")
-            
-            return ret
-        
-        paths: ListType[str] = []
-        body = ""
-        
-        #* Check if hierarchy
-        rootDef = False
-        #? Try to aquire root(if/loop) claim
-        if not Builder.getStateKeyLocal('__definitionsClaim__'):
-            rootDef = True
-            Builder.setStateKey('__definitionsClaim__', True)
-            Builder.setStateKey('__pathDidReturn__', set())
-        
-        body += buildBody(node.body)
-        
-        if len(body) == 0:
-            raise IndentationError("expected an indented block")
-        
-        with TempState('__resolveAsIf__', True):
-            paths.append(f"({Builder.buildFromNode(node.test)} {body})")
-        
-        if node.orelse:
-            if isinstance(node.orelse[0], If):
-                with TempState('__innerBody__', False):
-                    paths.append(Builder.buildFromNode(node.orelse[0]))
+                return possibleDefine
+            def buildBody(elements: ListType[AST], innerBody: bool = True) -> str:
+                ret = ""
+                didReturn = False
+
+                with TempState('__innerBody__', innerBody):
+                    for elem in elements:
+                        if didReturn:
+                            throw(ValueError("No expressions allowed after 'return': https://github.com/Coronon/PySchemeTranspiler#multiple-returns"), elem)
+
+                        #? Move possible definitions before rootDef in current scope
+                        if isinstance(elem, Assign) or isinstance(elem, AnnAssign):
+                            ret += handleAssign(elem)
+                            continue
+                        #? Make sure all paths have same return behaviour
+                        if isinstance(elem, Return):
+                            didReturn = True
+                        #? Ensure return behaviour through multiple levels of if statements
+                        if isinstance(elem, If):
+                            _ret, ifReturns = Builder.buildFromNodeType(elem) #* Yes, using 'buildFromNodeType' is a bit hacky but sufficient
+                            ret += _ret
+                            didReturn = ifReturns
+                        else:
+                            ret += Builder.buildFromNode(elem)
+
+                Builder.setStateKey('__pathDidReturn__', Builder.getStateKeyLocal('__pathDidReturn__') | set([didReturn]))
+                if len(Builder.getStateKeyLocal('__pathDidReturn__')) == 2:
+                    raise ValueError("Please ensure all paths have the same return behaviour: https://github.com/Coronon/PySchemeTranspiler#multiple-returns")
+
+                return ret
+
+            paths: ListType[str] = []
+            body = ""
+
+            #* Check if hierarchy
+            rootDef = False
+            #? Try to aquire root(if/loop) claim
+            if not Builder.getStateKeyLocal('__definitionsClaim__'):
+                rootDef = True
+                Builder.setStateKey('__definitionsClaim__', True)
+
+            body += buildBody(node.body)
+
+            if len(body) == 0:
+                raise IndentationError("expected an indented block")
+
+            with TempState('__resolveAsIf__', True):
+                paths.append(f"({Builder.buildFromNode(node.test)} {body})")
+
+            if node.orelse:
+                if isinstance(node.orelse[0], If) and len(node.orelse) == 1:
+                    paths.append(buildBody([node.orelse[0]], False))
+                else:
+                    body = buildBody(node.orelse)
+                    paths.append(f"(else {body})")
+
+
+            if not rootDef:
+                if not Builder.getStateKey('__innerBody__'):
+                    return SEPERATOR.join(paths), next(iter(Builder.getStateKeyLocal('__pathDidReturn__')))
+                else:
+                    return f"(cond {' '.join(paths)})", next(iter(Builder.getStateKeyLocal('__pathDidReturn__')))
             else:
-                body = buildBody(node.orelse)
-                paths.append(f"(else {body})")
-                
-        
-        if not rootDef:
-            if not Builder.getStateKey('__innerBody__'):
-                return SEPERATOR.join(paths)
-            else:
-                return f"(cond {' '.join(paths)})"
-        else:
-            defs = Builder.getStateKeyLocal('__definitions__')
-            Builder.setStateKey('__definitions__', [])
-            Builder.setStateKey('__definitionsClaim__', False)
-            
-            return f"{SEPERATOR.join(defs)}{SEPERATOR if len(defs) > 0 else ''}(cond {' '.join(paths)})"
+                defs = Builder.getStateKeyLocal('__definitions__')
+                Builder.setStateKey('__definitions__', [])
+                Builder.setStateKey('__definitionsClaim__', False)
+
+                return f"{SEPERATOR.join(defs)}{SEPERATOR if len(defs) > 0 else ''}(cond {' '.join(paths)})", next(iter(Builder.getStateKeyLocal('__pathDidReturn__')))
     
     @staticmethod
     def Compare(node: Compare) -> Tuple[str, type]:
