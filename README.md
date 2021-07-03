@@ -20,6 +20,7 @@ There might still be special edge cases not documented that can cause faulty tra
  - If, elif, else (also nested) (comparators eg. `!=` `==` `>=` but not `is` or `is not`)
  - If expressions (`var = a if b else c`)
  - For (also nested)
+ - Assert
 
 ### Typing system
 PYST has a fully fledged typing system and matches types at transpile-time. While most types can dynamically be deduced `lists` still need to be annotated in the standard python way, for example: `myList: List[int] = [1,2,3]`. This restriction is necessary because PYST can not infer a type for an empty list. Type annotations are always checked. To create a pending type you may assign a variable to *None*: `var = None`. This will make the type pending and allow later assigning of a different value. After a type is determined it may not be changed but can be set to None again. None can act as a `nullptr` value as in C++ to create optional returns. The variable which has a type but is set to a value of `None` may still be used like one with a value of its own type, any runtime errors may be avoided by the user (a None check for example: `if var != None:`).
@@ -44,13 +45,13 @@ print(willError(my_list))
                 ^
 ### Caveats
 #### Multiple returns
-Please ensure all paths in all functions return at least `None`. Multiple return statements in functions must be written so that they are the last executed entity in their function, for example with an if statement:
+Please ensure all paths in all functions return at least `None` (PYST will implicitly add this return if missing). Multiple return statements in functions must be written so that they are the last executed entity in their function, for example with an if statement:
 ```python
 def testFunc(something: int) -> int:
   if something:
     return something
   else:
-    return None
+    return None # This could also be a plain 'return'
 ```
 Note that the else is mandatory here as the first return would fall through to the `None` return otherwise.
 PYST will intentionally fail when an incorrect usage of `return` could lead to unexpected behavior.
