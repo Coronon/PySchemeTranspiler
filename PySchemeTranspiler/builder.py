@@ -64,6 +64,18 @@ IGNORED_IMPORTS = ["typing"]
 NUMBER_TYPES = [int, float]
 SEPERATOR = '\n'
 
+def copyLocation(origin: AST, destination: AST) -> None:
+    """Copy the location of a node to another node
+    
+    Arguments:
+        origin      {AST} -- AST node to copy location from
+        destination {AST} -- AST node to copy location to
+    """
+    destination.col_offset = origin.col_offset
+    destination.end_col_offset = origin.end_col_offset
+    destination.end_lineno = origin.end_lineno
+    destination.lineno = origin.lineno
+
 class TempState():
     def __init__(self, key: str, tempVal: str) -> None:
         """Create a temporary change in the current state within the current scope
@@ -157,7 +169,14 @@ class _Builder():
                     body += Builder.buildFromNode(i)
                 
                 if not Builder.getStateKeyLocal('__didReturn__'):
-                    raise ValueError("Please ensure your function returns at least 'None' on every path")
+                    #? Implicitly add 'return None'
+                    if retType is not None and retType is not type(None):
+                        warn("SyntaxWarning", "Implicitly added 'return None' to function with return type other than 'None'", node)
+                    _constant = Constant(None)
+                    copyLocation(node, _constant)
+                    _return = Return(_constant)
+                    copyLocation(node, _return)
+                    body += Builder.buildFromNode(_return)
             
         Builder.popState()
         return f'(define ({name} {args}) {body})'
@@ -194,6 +213,11 @@ class _Builder():
     
     @staticmethod
     def Return(node: Return) -> str:
+        #? Implicitly convert 'return' to 'return None'
+        if node.value is None:
+            node.value = Constant(None)
+            copyLocation(node, node.value)
+        
         if Builder.getStateKeyLocal('__for__'):
             raise ValueError("Returning inside of loops is not supported")
             
@@ -1553,6 +1577,9 @@ class Typer():
         """
         #? Types are equal
         if type1 == type2:
+            return True
+        #? Types are equal - None can be used as literal type
+        if type1 == None and type2 == type(None) or type1 == type(None) and type2 == None:
             return True
         
         #? One or both types are Any
