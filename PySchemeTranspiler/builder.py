@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
-from typing import Dict, List as ListType, Tuple, Union, Callable, Any
+from typing import Dict, List as ListType, Tuple as TupleType, Union, Callable, Any
 
 from ast import (
     AST,
@@ -56,7 +56,8 @@ from ast import (
     ImportFrom,
     arg,
     IfExp,
-    Assert
+    Assert,
+    Tuple
     )
 
 from .exceptions import throw, warn
@@ -119,7 +120,7 @@ class _Builder():
         argTypesDef = []
         argTypesKey = {}
         
-        setStateQueue: ListType[Tuple[str, type]] = []
+        setStateQueue: ListType[TupleType[str, type]] = []
         
         argsLen     = len(node.args.args)
         defaultsLen = len(node.args.defaults)
@@ -183,7 +184,7 @@ class _Builder():
         return f'(define ({name} {args}) {body})'
 
     @staticmethod
-    def Constant(node: Constant) -> Tuple[str]:
+    def Constant(node: Constant) -> TupleType[str]:
         value = node.value
         ret = None
         
@@ -230,7 +231,7 @@ class _Builder():
         return value
     
     @staticmethod
-    def BinOp(node: BinOp) -> Tuple[str, Any]:
+    def BinOp(node: BinOp) -> TupleType[str, Any]:
         def flattenNumberBinOp(operation: str) -> str:
             ops = ['+', '-', '*', '/']
             for op in ops:
@@ -287,7 +288,7 @@ class _Builder():
         return "/"
     
     @staticmethod
-    def Name(node: Name) -> Tuple[str, type]:
+    def Name(node: Name) -> TupleType[str, type]:
         ret = node.id, Builder.getStateKey(node.id)
         
         #? Check if we should resolve as a literal if
@@ -377,7 +378,7 @@ class _Builder():
         return ret
     
     @staticmethod
-    def UnaryOp(node: UnaryOp) -> Tuple[str, type]:
+    def UnaryOp(node: UnaryOp) -> TupleType[str, type]:
         ret = None
         
         with TempState('__resolveAsIf__', False):
@@ -421,15 +422,15 @@ class _Builder():
         return "not"
     
     @staticmethod
-    def Expr(node: Expr) -> Tuple[str, type]:
+    def Expr(node: Expr) -> TupleType[str, type]:
         return Builder.buildFromNodeType(node.value)
     
     @staticmethod
-    def Call(node: Call) -> Tuple[str, type]:
+    def Call(node: Call) -> TupleType[str, type]:
         class CallResolver():
             #* FUNCTIONS
             @staticmethod
-            def normal(node: Call) -> Tuple[str, type]:
+            def normal(node: Call) -> TupleType[str, type]:
                 #* Type lookup
                 fName = Builder.buildFromNode(node.func)
                 fType: Typer.TFunction = Builder.getStateKey(fName)
@@ -449,7 +450,7 @@ class _Builder():
                 
                 #* Parse arguments
                 #? Default args
-                argListDef: ListType[Tuple[str, type]] = []
+                argListDef: ListType[TupleType[str, type]] = []
                 for arg in node.args:
                     argListDef.append(Builder.buildFromNodeType(arg))
                 
@@ -467,8 +468,8 @@ class _Builder():
                 def getKeywordName(argument: str) -> str:
                     return argument.split(" ")[0][2:]
                 
-                #Tuple[kwName, kwCode, kwType]
-                argListKey: ListType[Tuple[str, str, type]] = []
+                #TupleType[kwName, kwCode, kwType]
+                argListKey: ListType[TupleType[str, str, type]] = []
                 for arg in node.keywords:
                     value, vType = Builder.buildFromNodeType(arg)
                     argListKey.append((getKeywordName(value), value, vType))
@@ -488,13 +489,13 @@ class _Builder():
                 return f"({fName} {args})", fType.ret
             
             @staticmethod
-            def print(node: Call) -> Tuple[str, type]:
+            def print(node: Call) -> TupleType[str, type]:
                 Builder.buildFlags['PRINT'] = True
                 node.func.id = "PRINT"
                 return CallResolver.normal(node)
             
             @staticmethod
-            def range(node: Call) -> Tuple[str, type]:
+            def range(node: Call) -> TupleType[str, type]:
                 #? This func is set to accept varArgs for easier build in typing -> Check args
                 if not 0 < len(node.args) < 4:
                     raise TypeError(f"builtin range takes 1 to 3 arguments, {len(node.args)} provided")
@@ -503,7 +504,7 @@ class _Builder():
                 return CallResolver.normal(node)
 
             @staticmethod
-            def input(node: Call) -> Tuple[str, type]:
+            def input(node: Call) -> TupleType[str, type]:
                 Builder.buildFlags['INPUT'] = True
                 
                 if not len(node.args) < 2:
@@ -517,7 +518,7 @@ class _Builder():
                 return CallResolver.normal(node)
     
             @staticmethod
-            def len(node: Call) -> Tuple[str, type]:
+            def len(node: Call) -> TupleType[str, type]:
                 class lenResolver():
                     @staticmethod
                     def error(value: str, vType: type) -> str:
@@ -550,11 +551,11 @@ class _Builder():
             #* ATTRIBUTES
 
             @staticmethod
-            def TList(node: Call, name: str, nType: Typer.TList, attr: str) -> Tuple[str, type]:
+            def TList(node: Call, name: str, nType: Typer.TList, attr: str) -> TupleType[str, type]:
                 def error(node: Call, name: str, nType: Typer.TList):
                     raise AttributeError(f"no such attribute function on type list")
                 
-                def append(node: Call, name: str, nType: Typer.TList) -> Tuple[str, type]:
+                def append(node: Call, name: str, nType: Typer.TList) -> TupleType[str, type]:
                     if not (args := len(node.args)) == 1:
                         raise ValueError(f"append on list takes 1 type-compatible argument, {args} provided")
                     
@@ -564,7 +565,7 @@ class _Builder():
                     
                     return f"(gvector-add! {name} {value})", Typer.Null()
                 
-                def pop(node: Call, name: str, nType: Typer.TList) -> Tuple[str, type]:
+                def pop(node: Call, name: str, nType: Typer.TList) -> TupleType[str, type]:
                     if not (args := len(node.args)) == 1:
                         raise ValueError(f"pop on list takes 1 positional argument, {args} provided")
                     
@@ -584,7 +585,7 @@ class _Builder():
                     
                     return f"(gvector-pop! {name} {index})", nType.contained
                 
-                def insert(node: Call, name: str, nType: Typer.TList) -> Tuple[str, type]:
+                def insert(node: Call, name: str, nType: Typer.TList) -> TupleType[str, type]:
                     if not (args := len(node.args)) == 2:
                         raise ValueError(f"insert on list takes 2 positional arguments, {args} provided")
                     
@@ -609,13 +610,13 @@ class _Builder():
                     
                     return f"(gvector-insert! {name} {index} {value})", Typer.Null()
                 
-                # def count(node: Call, name: str, nType: Typer.TList) -> Tuple[str, type]:
+                # def count(node: Call, name: str, nType: Typer.TList) -> TupleType[str, type]:
                 #     if not (args := len(node.args)) == 0:
                 #         raise ValueError(f"count on list takes no positional argument, {args} provided")
                     
                 #     return f"(gvector-count {name})", int
                 
-                attributes: Dict[str, Callable[[Call], Tuple[str, type]]] = {
+                attributes: Dict[str, Callable[[Call], TupleType[str, type]]] = {
                     'append' : append,
                     'pop'    : pop,
                     'insert' : insert,
@@ -632,7 +633,7 @@ class _Builder():
             # 'bool'  : Typer.TFunction([Typer.TUnion([bool, int, float, str])],  kwArgs=[], vararg=False, ret=bool)
             
             @staticmethod
-            def int(node: Call) -> Tuple[str, type]:
+            def int(node: Call) -> TupleType[str, type]:
                 Builder.buildFlags['TO_INT'] = True
                 accepted = [float, str, bool]
                 if not (lArgs := len(node.args)) == 1:
@@ -645,7 +646,7 @@ class _Builder():
                 return f"(int {argV})", int
 
             @staticmethod
-            def float(node: Call) -> Tuple[str, type]:
+            def float(node: Call) -> TupleType[str, type]:
                 Builder.buildFlags['TO_FLOAT'] = True
                 accepted = [float, int, str, bool]
                 if not (lArgs := len(node.args)) == 1:
@@ -658,7 +659,7 @@ class _Builder():
                 return f"(float {argV})", float
             
             @staticmethod
-            def str(node: Call) -> Tuple[str, type]:
+            def str(node: Call) -> TupleType[str, type]:
                 Builder.buildFlags['TO_STR'] = True
                 accepted = [str, int, float, bool]
                 if not (lArgs := len(node.args)) == 1:
@@ -671,7 +672,7 @@ class _Builder():
                 return f"(str {argV})", str
             
             @staticmethod
-            def bool(node: Call) -> Tuple[str, type]:
+            def bool(node: Call) -> TupleType[str, type]:
                 Builder.buildFlags['TO_BOOL'] = True
                 accepted = [bool, int, float, str]
                 if not (lArgs := len(node.args)) == 1:
@@ -687,7 +688,7 @@ class _Builder():
         with TempState('__resolveAsIf__', False):
             if not isinstance(node.func, Attribute):
                 #? Normal call
-                specials: Dict[str, Callable[[Call], Tuple[str, type]]] = {
+                specials: Dict[str, Callable[[Call], TupleType[str, type]]] = {
                     'print' : CallResolver.print,
                     'range' : CallResolver.range,
                     'input' : CallResolver.input,
@@ -704,14 +705,14 @@ class _Builder():
                 def error(node: Call, name: str, nType: type, attr: str):
                     raise TypeError(f"object of type {nType} does not have any attribute functions")
                 
-                def fetchInfoFromAttribute(node: Attribute) -> Tuple[str, type, str]:
+                def fetchInfoFromAttribute(node: Attribute) -> TupleType[str, type, str]:
                     """Get basic info from Attribute
 
                     Arguments:
                         node {Attribute} -- Attribute to analyze
 
                     Returns:
-                        Tuple[str, type, str] -- VariableName, VariableType, AttributeCallName
+                        TupleType[str, type, str] -- VariableName, VariableType, AttributeCallName
                     """
                     if not isinstance(node.value, Name):
                         raise TypeError(f"node of type {type(node.value)} may not use attributes")
@@ -721,7 +722,7 @@ class _Builder():
 
                 name, nType, attr = fetchInfoFromAttribute(node.func)
                 
-                types: Dict[str, Callable[[Call], Tuple[str, type]]] = {
+                types: Dict[str, Callable[[Call], TupleType[str, type]]] = {
                     Typer.TList: CallResolver.TList,
                 }
                 
@@ -734,12 +735,12 @@ class _Builder():
         return ret
             
     @staticmethod
-    def keyword(node: Keyword) -> Tuple[str, type]:
+    def keyword(node: Keyword) -> TupleType[str, type]:
         value, vType = Builder.buildFromNodeType(node.value)
         return f"#:{node.arg} {value}", vType
 
     @staticmethod
-    def If(node: If) -> Tuple[str, bool]:
+    def If(node: If) -> TupleType[str, bool]:
         #! The 'bool' in the returned Tuple indicates the return behaviour of this if
         with TempState('__pathDidReturn__', set()):
             def handleAssign(node: Assign) -> str:
@@ -822,7 +823,7 @@ class _Builder():
                 return f"{SEPERATOR.join(defs)}{SEPERATOR if len(defs) > 0 else ''}(cond {' '.join(paths)})", next(iter(Builder.getStateKeyLocal('__pathDidReturn__')))
     
     @staticmethod
-    def Compare(node: Compare) -> Tuple[str, type]:
+    def Compare(node: Compare) -> TupleType[str, type]:
         with TempState('__resolveAsIf__', False):
             def determineOp(op: str, type1: type, type2: type) -> str:
                 if op in ["==", "!="]: return op
@@ -856,15 +857,15 @@ class _Builder():
         return ret, bool
         
     @staticmethod
-    def BoolOp(node: BoolOp) -> Tuple[str, type]:
+    def BoolOp(node: BoolOp) -> TupleType[str, type]:
         return f"({Builder.buildFromNode(node.op)} {' '.join([Builder.buildFromNode(x) for x in node.values])})", bool
         
     @staticmethod
-    def Or(node: Or) -> Tuple[str, type]:
+    def Or(node: Or) -> TupleType[str, type]:
         return "or", bool
 
     @staticmethod
-    def And(node: And) -> Tuple[str, type]:
+    def And(node: And) -> TupleType[str, type]:
         return "and", bool
     
     @staticmethod
@@ -894,7 +895,7 @@ class _Builder():
         return ">="
 
     @staticmethod
-    def List(node: List) -> Tuple[str, type]:
+    def List(node: List) -> TupleType[str, type]:
         Builder.buildFlags['GROWABLE_VECTOR'] = True
         
         ret = None
@@ -952,7 +953,7 @@ class _Builder():
                 return f"(define {name} {value})"
     
     @staticmethod
-    def Subscript(node: Subscript) -> Tuple[str, type]:
+    def Subscript(node: Subscript) -> TupleType[str, type]:
         with TempState('__resolveAsIf__', False):
             name, nType = Builder.buildFromNodeType(node.value)
         
@@ -962,12 +963,12 @@ class _Builder():
                 raise TypeError(f"value of type {nType} can not be subscripted")
             
             @staticmethod
-            def TList(name: str, nType: type, slice: Union[Index, Slice]) -> Tuple[str, type]:
+            def TList(name: str, nType: type, slice: Union[Index, Slice]) -> TupleType[str, type]:
                 if isinstance(slice, Index):
                     try:
                         index, indexT = Builder.buildFromNodeType(slice)
                         
-                        if indexT is int and isinstance(index, int):
+                        if indexT is int and (isinstance(index, int) or index.isnumeric()):
                             if index < 0:
                                 index = f"(- (gvector-count {name}) {-index})"
                         elif indexT is int and isinstance(index, str):
@@ -983,9 +984,40 @@ class _Builder():
                     raise NotImplementedError("Advanced slicing is not yet implemented for lists")
                 else:
                     raise TypeError(f"type {type(slice)} can not be used to slice a list")
+            
+            @staticmethod
+            def TTuple(name: str, nType: type, slice: Union[Index, Slice]) -> TupleType[str, type]:
+                retType = None
+                if isinstance(slice, Index):
+                    try:
+                        index, indexT = Builder.buildFromNodeType(slice)
+                        
+                        if indexT is int and (isinstance(index, int) or index.isnumeric()):
+                            index = int(index)
+                            if abs(index) >= (tupleLen := len(nType.contained)):
+                                throw(ValueError(f"Index '{index}' is out of range for tuple of length {tupleLen}"), node)
+                            
+                            if index < 0:
+                                index = f"(- (vector-length {name}) {-index})"
+                            retType = nType.contained[abs(index)]
+                        elif indexT is int:
+                            index = f"(if (< {index} 0) (- (vector-length {name}) (- {index})) {index})"
+                        else:
+                            raise ValueError()
+                        
+                    except ValueError:
+                        raise TypeError(f"instance of type {type(index)} can not be used to index into a tuple")
+                    
+                    return f"(vector-ref {name} {index})", retType
+                elif isinstance(slice, Slice):
+                    raise NotImplementedError("Advanced slicing is not yet implemented for tuples")
+                else:
+                    raise TypeError(f"type {type(slice)} can not be used to slice a tuple")
+                
         
-        types: Dict[str, Callable[[Call], Tuple[str, type]]] = {
-            Typer.TList: SubscriptResolver.TList
+        types: Dict[str, Callable[[Call], TupleType[str, type]]] = {
+            Typer.TList: SubscriptResolver.TList,
+            Typer.TTuple: SubscriptResolver.TTuple,
         }
         
         with TempState('__resolveAsIf__', False):
@@ -998,7 +1030,7 @@ class _Builder():
         return ret
     
     @staticmethod
-    def Index(node: Index) -> Tuple[str, int]:
+    def Index(node: Index) -> TupleType[str, int]:
         if isinstance(node.value, Name) or isinstance(node.value, Constant) or isinstance(node.value, UnaryOp) or isinstance(node.value, BinOp):
             return Builder.buildFromNodeType(node.value)
         else:
@@ -1100,7 +1132,7 @@ class _Builder():
         return ""
     
     @staticmethod
-    def IfExp(node: IfExp) -> Tuple[str, type]:
+    def IfExp(node: IfExp) -> TupleType[str, type]:
         with TempState('__resolveAsIf__', True):
             test = Builder.buildFromNode(node.test)
         
@@ -1119,6 +1151,30 @@ class _Builder():
             customMsg, customMsgT = Builder.buildFromNodeType(node.msg)
             msg += f": {customMsg if customMsgT is not str else customMsg[1:-1]}"
         return f'(unless {test} (error "{msg}"))'
+    
+    @staticmethod
+    def Tuple(node: Dict) -> TupleType[str, type]:
+        ret = None
+        
+        containingT = []
+        elements = []
+        
+        with TempState('__resolveAsIf__', False):
+            for entry in node.elts:
+                value, vType = Builder.buildFromNodeType(entry)
+                elements.append(value)
+                containingT.append(vType)
+                
+            if len(elements) < 2:
+                raise ValueError("A tuple requires two or more elements")
+
+            ret = f"(vector-immutable {' '.join(elements)})", Typer.TTuple(containingT)
+        
+        #? Check if we should resolve as a literal if
+        if Builder.getStateKeyLocal('__resolveAsIf__'):
+            return IfLiteralResolver.resolve(*ret)
+        
+        return ret
 
 class Builder():
     Interpreter = Callable[[AST], str]
@@ -1158,7 +1214,8 @@ class Builder():
         ImportFrom  : _Builder.ImportFrom,
         keyword     : _Builder.keyword,
         IfExp       : _Builder.IfExp,
-        Assert      : _Builder.Assert
+        Assert      : _Builder.Assert,
+        Tuple       : _Builder.Tuple
     }
     
     buildFlags = {
@@ -1203,7 +1260,7 @@ class Builder():
         return ret
     
     @staticmethod
-    def buildFromNodeType(node: AST) -> Tuple[str, Any]:
+    def buildFromNodeType(node: AST) -> TupleType[str, Any]:
         """Build sourceCode from a AST node with type information
 
         Arguments:
@@ -1221,7 +1278,7 @@ class Builder():
         return ret, Typer.Null()
     
     @staticmethod
-    def _buildFromNode(node: AST) -> Tuple[str, Any]:
+    def _buildFromNode(node: AST) -> TupleType[str, Any]:
         """Internally used to unify error handling `DO NOT USE EXTERNALLY`
 
         Raises:
@@ -1448,14 +1505,19 @@ class _Typer():
                     if isinstance((listT := Builder.getStateKey(node.value.id)), Typer.TList):
                         return listT.contained
                     
-                return _Typer.LiteralSubscriptResolver.error(node)
+                return LiteralSubscriptResolver.error(node)
             
             @staticmethod
             def List(node: Subscript) -> type:
                 return Typer.TList(_Typer._literalAnnotation(node.slice.value))
+            
+            @staticmethod
+            def Tuple(node: Subscript) -> type:
+                return Typer.TTuple(_Typer._literalAnnotation(node.slice.value))
         
         specials: Dict[str, Callable[[Call], type]] = {
             'List': LiteralSubscriptResolver.List,
+            'Tuple': LiteralSubscriptResolver.Tuple,
         }
         
         return specials.get(node.value.id, LiteralSubscriptResolver.normal)(node)
@@ -1466,6 +1528,8 @@ class _Typer():
             return _Typer._literalName(node.id)
         elif isinstance(node, Subscript):   
             return _Typer._literalSubscript(node)
+        elif isinstance(node, Tuple):
+            return [_Typer._literalAnnotation(res) for res in node.elts]
         else:
             raise TypeError(f"node of type {type(node)} is not supported for arg annotations")
     
@@ -1558,6 +1622,17 @@ class Typer():
         
         def __repr__(self):
             return str(f"<{self.type}...>")
+    
+    class TTuple(Iterable, T):
+        type ="TTuple"
+        
+        def __init__(self, contained: TupleType[type]):
+            #! None as we dont give guarantees for iteration over tuples
+            super(Typer.TTuple, self).__init__(None)
+            self.contained = contained
+        
+        def __repr__(self):
+            return str(f"<{self.type}: {self.contained}>")
     
     switcher: Dict[type, Callable] = {
         Constant   : _Typer.Constant,
@@ -1711,35 +1786,35 @@ class IfLiteralResolver():
         raise TypeError(f"can not use instance '{value}' in a literal if")
     
     @staticmethod
-    def bool(value: str) -> Tuple[str, type]:
+    def bool(value: str) -> TupleType[str, type]:
         return value, bool
     
     @staticmethod
-    def int(value: str) -> Tuple[str, type]:
+    def int(value: str) -> TupleType[str, type]:
         return f"(!= {value} 0)", bool
     
     @staticmethod
-    def float(value: str) -> Tuple[str, type]:
+    def float(value: str) -> TupleType[str, type]:
         return f"(!= {value} 0)", bool
     
     @staticmethod
-    def str(value: str) -> Tuple[str, type]:
+    def str(value: str) -> TupleType[str, type]:
         return f'(!= {value} "")', bool
     
     @staticmethod
-    def NoneType(value: str) -> Tuple[str, type]:
+    def NoneType(value: str) -> TupleType[str, type]:
         return "#f", bool
     
     @staticmethod
-    def TList(value: str) -> Tuple[str, type]:
+    def TList(value: str) -> TupleType[str, type]:
         return f"(!= (gvector-count {value}) 0)", bool
     
     @staticmethod
-    def TFunction(value: str) -> Tuple[str, type]:
+    def TFunction(value: str) -> TupleType[str, type]:
         raise TypeError("can not use instance of type TFunction in a literal if")
     
     @staticmethod
-    def resolve(value: str, vType: type) -> Tuple[str, type]:
+    def resolve(value: str, vType: type) -> TupleType[str, type]:
         switcher: Dict[type, Callable] = {
             bool            : IfLiteralResolver.bool,
             int             : IfLiteralResolver.int,
