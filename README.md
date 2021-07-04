@@ -8,6 +8,8 @@ PYST is a transpiler between python and Scheme(Racket) source code. It tries to 
 ### Work in Progress
 There might still be special edge cases not documented that can cause faulty transpilation. If you come across such a case, please submit the code that did not transpile correctly as an issue here on GitHub or email me privately.
 
+#### [Roadmap/Todos](https://github.com/Coronon/PySchemeTranspiler/issues/10)
+
 ## Supported features
 
 ### Language features
@@ -16,7 +18,7 @@ There might still be special edge cases not documented that can cause faulty tra
  - Arithmetic
  - Custom Functions
  - Builtins (*print*, *input*, *range*, *len*; Type converters: *int*, *float*, *str*, *bool*)
- - Types: int, float, str, bool, None, List[{Type}] (Indexing + append, pop and insert)
+ - Types: int, float, str, bool, None, List[{Type}] (Indexing + append, pop and insert), Tuple[{Type, ...}]
  - If, elif, else (also nested) (comparators eg. `!=` `==` `>=` but not `is` or `is not`)
  - If expressions (`var = a if b else c`)
  - For (also nested)
