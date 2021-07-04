@@ -620,6 +620,10 @@ class _Builder():
                     @staticmethod
                     def TList(value: str, vType: type) -> str:
                         return f"(gvector-count {value})"
+
+                    @staticmethod
+                    def TTuple(value: str, vType: type) -> str:
+                        return f"(vector-length {value})"
                 
                 
                 if not (lArgs := len(node.args)) == 1:
@@ -631,8 +635,9 @@ class _Builder():
                     vType = type(vType)
                 
                 switcher: Dict[type, Callable[[str, type], str]] = {
-                    str         : lenResolver.str,
-                    Typer.TList : lenResolver.TList
+                    str          : lenResolver.str,
+                    Typer.TList  : lenResolver.TList,
+                    Typer.TTuple : lenResolver.TTuple,
                 }
                 
                 return switcher.get(vType, lenResolver.error)(value, vType), int
@@ -1405,7 +1410,7 @@ class Builder():
             'PRINT' : Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None),
             'input' : Typer.TFunction([str], kwArgs=[], vararg=False, ret=str),
             'range' : Typer.TFunction([int], kwArgs=[], vararg=True, ret=Typer.TList(int, native=True)), #? We set this to vararg as we specifically check this case
-            'len'   : Typer.TFunction([Typer.TUnion([str, Typer.TList])], kwArgs=[], vararg=False, ret=int)
+            'len'   : Typer.TFunction([Typer.TUnion([str, Typer.TList, Typer.TTuple])], kwArgs=[], vararg=False, ret=int)
             #? No primitive types should be shadowed by their corresponding caster functionTypes! This is just help for the developer
             # 'int'   : Typer.TFunction([Typer.TUnion([float, str, bool])],       kwArgs=[], vararg=False, ret=int),
             # 'float' : Typer.TFunction([Typer.TUnion([int, str, bool])],         kwArgs=[], vararg=False, ret=float),
@@ -1905,6 +1910,10 @@ class IfLiteralResolver():
     @staticmethod
     def TFunction(value: str) -> TupleType[str, type]:
         raise TypeError("can not use instance of type TFunction in a literal if")
+
+    @staticmethod
+    def TTuple(value: str) -> TupleType[str, type]:
+        return f"(!= (vector-length {value}) 0)"
     
     @staticmethod
     def resolve(value: str, vType: type) -> TupleType[str, type]:
@@ -1916,6 +1925,7 @@ class IfLiteralResolver():
             None            : IfLiteralResolver.NoneType,
             Typer.TList     : IfLiteralResolver.TList,
             Typer.TFunction : IfLiteralResolver.TFunction,
+            Typer.TTuple    : IfLiteralResolver.TTuple,
         }
         
         Builder.buildFromNode(NotEq()) #? Let _Builder.NotEq handle buildFlags to not spread functionality even more
