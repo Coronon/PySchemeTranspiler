@@ -735,7 +735,12 @@ class _Builder():
                 
                 argV, argT = Builder.buildFromNodeType(node.args[0])
                 if argT not in accepted:
-                    raise TypeError(f"builtin typeConverter int takes {accepted}, {argT} provided")
+                    if isinstance(argT, Typer.TAny):
+                        #? Yes, this has to be a seperate if
+                        if not Builder.getStateKeyLocal('__assignSkipValue__'):
+                            warn("TypeWarning", "Can not assure type correctness for Any", node.args[0])
+                    else:
+                        raise TypeError(f"builtin typeConverter int takes {accepted}, {argT} provided")
                 
                 return f"(int {argV})", int
 
@@ -748,7 +753,12 @@ class _Builder():
                 
                 argV, argT = Builder.buildFromNodeType(node.args[0])
                 if argT not in accepted:
-                    raise TypeError(f"builtin typeConverter float takes {accepted}, {argT} provided")
+                    if isinstance(argT, Typer.TAny):
+                        #? Yes, this has to be a seperate if
+                        if not Builder.getStateKeyLocal('__assignSkipValue__'):
+                            warn("TypeWarning", "Can not assure type correctness for Any", node.args[0])
+                    else:
+                        raise TypeError(f"builtin typeConverter float takes {accepted}, {argT} provided")
                 
                 return f"(float {argV})", float
             
@@ -761,7 +771,12 @@ class _Builder():
                 
                 argV, argT = Builder.buildFromNodeType(node.args[0])
                 if argT not in accepted:
-                    raise TypeError(f"builtin typeConverter str takes {accepted}, {argT} provided")
+                    if isinstance(argT, Typer.TAny):
+                        #? Yes, this has to be a seperate if
+                        if not Builder.getStateKeyLocal('__assignSkipValue__'):
+                            warn("TypeWarning", "Can not assure type correctness for Any", node.args[0])
+                    else:
+                        raise TypeError(f"builtin typeConverter str takes {accepted}, {argT} provided")
                 
                 return f"(str {argV})", str
             
@@ -774,7 +789,12 @@ class _Builder():
                 
                 argV, argT = Builder.buildFromNodeType(node.args[0])
                 if argT not in accepted:
-                    raise TypeError(f"builtin typeConverter bool takes {accepted}, {argT} provided")
+                    if isinstance(argT, Typer.TAny):
+                        #? Yes, this has to be a seperate if
+                        if not Builder.getStateKeyLocal('__assignSkipValue__'):
+                            warn("TypeWarning", "Can not assure type correctness for Any", node.args[0])
+                    else:
+                        raise TypeError(f"builtin typeConverter bool takes {accepted}, {argT} provided")
                 
                 return f"(bool {argV})", bool
         
@@ -1159,12 +1179,14 @@ class _Builder():
             raise TypeError(f"can not iterate over instance of {itercType}")
         
         targetType = itercType.iterType
-        if not isinstance(itercType, Typer.TList):
+        if all([not isinstance(itercType, T) for T in [Typer.TList, Typer.TTuple]]):
             raise NotImplementedError(f"iterable of type {itercType} is currently not supported in for loops")
         
         if isinstance(itercType, Typer.TList):
             if not itercType.native:
                 iterc = f"(gvector->list {iterc})"
+        elif isinstance(itercType, Typer.TTuple):
+            iterc = f"(vector->list {iterc})"
         
         #* Determine target
         target = None
@@ -1725,12 +1747,18 @@ class Typer():
         type ="TTuple"
         
         def __init__(self, contained: TupleType[type]):
-            #! None as we dont give guarantees for iteration over tuples
-            super(Typer.TTuple, self).__init__(None)
+            #! TAny as we dont give guarantees for iteration over tuples
+            super(Typer.TTuple, self).__init__(Typer.TAny())
             self.contained = contained
         
         def __repr__(self):
             return str(f"<{self.type}: {self.contained}>")
+    
+    class TAny(T):
+        type = "TAny"
+        
+        def __repr__(self):
+            return str(f"Any")
     
     switcher: Dict[type, Callable] = {
         Constant   : _Typer.Constant,
