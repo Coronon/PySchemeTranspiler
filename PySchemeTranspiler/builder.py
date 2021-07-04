@@ -1116,7 +1116,7 @@ class _Builder():
         
         ret = f"(for-each (lambda (__i__) {body}) {iterc})"
         if not rootDef:
-                return ret
+            return ret
         else:
             defs = Builder.getStateKeyLocal('__definitions__')
             Builder.setStateKey('__definitions__', [])
