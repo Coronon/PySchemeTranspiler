@@ -298,7 +298,9 @@ class _Builder():
         return ret
     
     @staticmethod
-    def Assign(node: Assign) -> str:
+    def Assign(node: Assign) -> Tuple[str, bool]:
+        #! The returned bool indicates if the returned string is a define (True) or set (False)
+        isDefine = False
         ret = ""
         #? FUN-FACT: This blocks things like 'a, b = 1, a' if 'a' is not defined before
         #? as 'a' is not yet defined (we define a first, then b...) when the value tuple is build :P
@@ -338,7 +340,6 @@ class _Builder():
                     """
                     if isinstance(node, Name): return node.id
                     else: return handleSubscript(node)
-                
                 pre = ""
                 preInner = ""
                 inner = ""
@@ -350,15 +351,17 @@ class _Builder():
                     
                     if Builder.inStateLocal(recipient.id):
                         value, vType = Builder.buildFromNodeType(recipient)
-                        dunderId = f"__{recipient.id}__"
+                        dunderId = f"___{recipient.id}___"
+                        if dunderId in captured:
+                            continue
                         captured[dunderId] = vType
                         preInner += f"(define {dunderId} {recipient.id})"
                         Builder.setStateKey(dunderId, vType)
                 
                 for recipient, valueNode in zip(target.elts, node.value.elts):
-                    if isinstance(valueNode, Name) and (valDunderId := f"__{valueNode.id}__") in captured:
+                    if isinstance(valueNode, Name) and (valDunderId := f"___{valueNode.id}___") in captured:
                         valueNode.id = valDunderId
-                    if isinstance(valueNode, Subscript) and (valDunderId := f"__{handleSubscript(valueNode)}__") in captured:
+                    if isinstance(valueNode, Subscript) and (valDunderId := f"___{handleSubscript(valueNode)}___") in captured:
                         handleSubscript(valueNode, valDunderId)
                         
                     assign = Assign([recipient], valueNode)
@@ -372,10 +375,23 @@ class _Builder():
                 #? Remove temp types (captured)
                 for tmpName in captured:
                     Builder.removeStateKeyLocal(tmpName)
+                #? Revert renames
+                for valueNode in node.value.elts:
+                    if isinstance(valueNode, Name) and valueNode.id in captured:
+                        valueNode.id = valueNode.id[3:-3]
+                    if isinstance(valueNode, Subscript) and (valDunderId := handleSubscript(valueNode)) in captured:
+                        handleSubscript(valueNode, valDunderId[3:-3])
                 
-                ret = f"{pre}{f'((lambda () {preInner}{inner}))' if inner != '' else ''}"      
+                if Builder.getStateKeyLocal('__assignSkipValue__'):
+                    #? Some component doesnt want us to include the value
+                    isDefine = True
+                    ret = pre
+                else:
+                    isDefine = False
+                    ret = f"{pre}{f'((lambda () {preInner}{inner}))' if inner != '' else ''}" 
                 
             elif isinstance(target, Subscript):
+                isDefine = False
                 name, nType = Builder.buildFromNodeType(target.value)
         
                 class AssignSubscriptResolver():
@@ -414,9 +430,10 @@ class _Builder():
                     Typer.TList: AssignSubscriptResolver.TList
                 }
                 
-                return types.get(type(nType), AssignSubscriptResolver.error)(name, nType, target.slice)
+                return types.get(type(nType), AssignSubscriptResolver.error)(name, nType, target.slice), isDefine
             else:
                 if Builder.inStateLocal(target.id):
+                    isDefine = False
                     if Builder.config['TYPES_STRICT']:
                         #? Strict mode
                         #? Allow automatic conversion between compatible types that dont cause data loss
@@ -436,6 +453,7 @@ class _Builder():
                         
                     ret += f"(set! {target.id} {value})"
                 else:
+                    isDefine = True
                     if Typer.isRestrictedType(vType):
                         raise TypeError(f"restricted type {vType} may only be used in an annotated assign")
                     
@@ -446,7 +464,7 @@ class _Builder():
                     else:
                         ret += f"(define {target.id} {value})"
         
-        return ret
+        return ret, isDefine
     
     @staticmethod
     def UnaryOp(node: UnaryOp) -> TupleType[str, type]:
@@ -816,8 +834,9 @@ class _Builder():
         with TempState('__pathDidReturn__', set()):
             def handleAssign(node: Assign) -> str:
                 with TempState('__assignSkipValue__', True):
-                    possibleDefine = Builder.buildFromNode(node)
-                if not (len(possibleDefine) >= 5 and possibleDefine[:5] == "(set!") and not (len(possibleDefine) >= 18 and possibleDefine[:18] == "(safe-gvector-set!"):
+                    possibleDefine, isDefine = Builder.buildFromNodeType(node)
+                if isDefine:
+                # if not (len(possibleDefine) >= 5 and possibleDefine[:5] == "(set!") and not (len(possibleDefine) >= 18 and possibleDefine[:18] == "(safe-gvector-set!"):
                     Builder.setStateKey(
                         '__definitions__',
                         [*Builder.getStateKeyLocal('__definitions__'), possibleDefine]
@@ -1117,8 +1136,10 @@ class _Builder():
     def For(node: For) -> str:
         def handleAssign(node: Assign) -> str:
             with TempState('__assignSkipValue__', True):
-                possibleDefine = Builder.buildFromNode(node)
-            if not (len(possibleDefine) >= 5 and possibleDefine[:5] == "(set!") and not (len(possibleDefine) >= 18 and possibleDefine[:18] == "(safe-gvector-set!"):
+                # possibleDefine = Builder.buildFromNode(node)
+                possibleDefine, isDefine = Builder.buildFromNodeType(node)
+            if isDefine:
+            # if not (len(possibleDefine) >= 5 and possibleDefine[:5] == "(set!") and not (len(possibleDefine) >= 18 and possibleDefine[:18] == "(safe-gvector-set!"):
                 Builder.setStateKey(
                 '__definitions__',
                 [*Builder.getStateKeyLocal('__definitions__'), possibleDefine]
