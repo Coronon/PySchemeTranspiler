@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
-from typing import Dict, List as ListType, Tuple as TupleType, Union, Callable, Any
+from typing import Dict, List as ListType, Tuple as TupleType, Union, Callable, Any, Optional
 
 from ast import (
     AST,
@@ -300,11 +300,82 @@ class _Builder():
     @staticmethod
     def Assign(node: Assign) -> str:
         ret = ""
+        #? FUN-FACT: This blocks things like 'a, b = 1, a' if 'a' is not defined before
+        #? as 'a' is not yet defined (we define a first, then b...) when the value tuple is build :P
         value, vType = Builder.buildFromNodeType(node.value)
         
         for target in node.targets:
             
-            if isinstance(target, Subscript):
+            if isinstance(target, Tuple):
+                def handleSubscript(node: Subscript, newName: Optional[str] = None) -> str:
+                    """Return the underlying name of a possibly nested Subscript node and optionally change it
+
+                    Arguments:
+                        node    {Subscript}     -- Node to get name from
+                        newName {Optional[str]} -- New value for name (default: None)
+
+                    Returns:
+                        str -- Underlying name before possible change
+                    """
+                    if isinstance(node.value, Name):
+                        name = node.value.id
+                        if newName is not None:
+                            node.value.id = newName
+                            
+                        return name
+                    elif isinstance(node.value, Subscript):
+                        return handleSubscript(node.value, newName)
+                    else:
+                        raise ValueError(f"AugAssign is not supported for subscripts with underlying {type(node.value)}")
+                def getName(node: Union[Name, Subscript]) -> str:
+                    """Determine the name of the underlaying variable
+
+                    Arguments:
+                        node {Union[Name, Subscript]} -- A Name or Subscript node
+
+                    Returns:
+                        str -- The Name.id of the underlaying variable
+                    """
+                    if isinstance(node, Name): return node.id
+                    else: return handleSubscript(node)
+                
+                pre = ""
+                preInner = ""
+                inner = ""
+                captured = {} # Variables that we create aliases for to allow 'swapping'
+                #? Compute captured list
+                for recipient in target.elts:
+                    if isinstance(recipient, Subscript):
+                        recipient = Name(handleSubscript(recipient))
+                    
+                    if Builder.inStateLocal(recipient.id):
+                        value, vType = Builder.buildFromNodeType(recipient)
+                        dunderId = f"__{recipient.id}__"
+                        captured[dunderId] = vType
+                        preInner += f"(define {dunderId} {recipient.id})"
+                        Builder.setStateKey(dunderId, vType)
+                
+                for recipient, valueNode in zip(target.elts, node.value.elts):
+                    if isinstance(valueNode, Name) and (valDunderId := f"__{valueNode.id}__") in captured:
+                        valueNode.id = valDunderId
+                    if isinstance(valueNode, Subscript) and (valDunderId := f"__{handleSubscript(valueNode)}__") in captured:
+                        handleSubscript(valueNode, valDunderId)
+                        
+                    assign = Assign([recipient], valueNode)
+                    copyLocation(recipient, assign)
+                    
+                    if Builder.inStateLocal(getName(recipient)):
+                        inner += Builder.buildFromNode(assign)
+                    else:
+                        pre += Builder.buildFromNode(assign)
+                
+                #? Remove temp types (captured)
+                for tmpName in captured:
+                    Builder.removeStateKeyLocal(tmpName)
+                
+                ret = f"{pre}{f'((lambda () {preInner}{inner}))' if inner != '' else ''}"      
+                
+            elif isinstance(target, Subscript):
                 name, nType = Builder.buildFromNodeType(target.value)
         
                 class AssignSubscriptResolver():
@@ -969,6 +1040,7 @@ class _Builder():
                         index, indexT = Builder.buildFromNodeType(slice)
                         
                         if indexT is int and (isinstance(index, int) or index.isnumeric()):
+                            index = int(index)
                             if index < 0:
                                 index = f"(- (gvector-count {name}) {-index})"
                         elif indexT is int and isinstance(index, str):
