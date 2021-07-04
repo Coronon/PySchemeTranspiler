@@ -829,7 +829,7 @@ class _Builder():
         return ret
             
     @staticmethod
-    def keyword(node: Keyword) -> TupleType[str, type]:
+    def keyword(node: keyword) -> TupleType[str, type]:
         value, vType = Builder.buildFromNodeType(node.value)
         return f"#:{node.arg} {value}", vType
 
@@ -1174,7 +1174,7 @@ class _Builder():
                 if Builder.config['TYPES_STRICT']:
                     #? Strict mode
                     if not Typer.isTypeCompatible((sType := Builder.getStateKeyLocal(target)), targetType):
-                        raise TypeError(f"Type {sType} and {vType} are incompatible")
+                        raise TypeError(f"Type {sType} and {targetType} are incompatible")
                 else:
                     Builder.setStateKey(target, targetType)
             else:
