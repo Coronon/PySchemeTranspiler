@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 class extraC():
-    PRINT = '(define (PRINT . args) (for-each (lambda (x) (display x) (display " ")) args)(newline))'
+    PRINT = '(define (PRINT . args) (for-each (lambda (x i) (unless (= i 0) (display " ")) (display x)) args (range (length args)))(newline))'
     
     EQUAL = '(define (== a b) (if (and (number? a) (number? b)) (= a b) (equal? a b)))'
 
