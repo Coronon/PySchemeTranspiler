@@ -1376,7 +1376,7 @@ class Builder():
     
     @staticmethod
     def inState(key: str) -> bool:
-        """Check if a key is present in the nearest scope
+        """Check if a key is present in any scope (nearest -> furthest)
 
         Arguments:
             key {str} -- Key to check
@@ -1391,7 +1391,7 @@ class Builder():
     
     @staticmethod
     def inStateLocal(key: str) -> bool:
-        """Check if a key is present in current compilation State
+        """Check if a key is present in current compilation scope (nearest)
 
         Arguments:
             key {str} -- Key to check
