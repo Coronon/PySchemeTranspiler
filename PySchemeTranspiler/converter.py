@@ -67,7 +67,7 @@ class Converter():
             return userCode.strip()
         
         
-        return f"{compilerCode}\n{userCode}".strip()
+        return f"{compilerCode}\n(define (main)\n\n{userCode}\n(void))\n(main)".strip()
     
     @staticmethod
     def compileBuildFlags(flags: Dict[str, bool]) -> Set[str]:
