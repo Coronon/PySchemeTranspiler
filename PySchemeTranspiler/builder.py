@@ -189,7 +189,8 @@ class _Builder():
         ret = None
         
         if isinstance(value, str):
-            ret = f'"{value}"', str
+            escapedValue = value.replace("\"", "\\\"")
+            ret = f'"{escapedValue}"', str
         #? This has to be before int as bool is a subclass of int
         elif isinstance(value, bool):
             boolSwitcher: Dict[bool, str] = {
