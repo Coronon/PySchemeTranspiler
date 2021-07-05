@@ -351,12 +351,14 @@ class _Builder():
                         recipient = Name(handleSubscript(recipient))
                     
                     if Builder.inStateLocal(recipient.id):
+                        Builder.buildFlags['DEEPCOPY'] = True
+                        
                         value, vType = Builder.buildFromNodeType(recipient)
                         dunderId = f"___{recipient.id}___"
                         if dunderId in captured:
                             continue
                         captured[dunderId] = vType
-                        preInner += f"(define {dunderId} {recipient.id})"
+                        preInner += f"(define {dunderId} (deepcopy {recipient.id}))"
                         Builder.setStateKey(dunderId, vType)
                 
                 for recipient, valueNode in zip(target.elts, node.value.elts):
@@ -1345,6 +1347,7 @@ class Builder():
         'NOT_EQUAL'       : False, # Include != function
         'INPUT'           : False, # Include input function
         'GROWABLE_VECTOR' : False, # Include growableVectors (std)
+        'DEEPCOPY'        : False, # Include deepcopy function
         'TO_INT'          : False, # Include to int converter
         'TO_FLOAT'        : False, # Include to float converter
         'TO_STR'          : False, # Include to str converter

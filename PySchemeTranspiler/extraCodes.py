@@ -29,6 +29,8 @@ class extraC():
 (define (gvector-access vec i) (if (>= i 0) (gvector-ref vec i) (gvector-ref vec (+ (gvector-count vec) i))))
 """.strip()
 
+    DEEPCOPY = '(define (deepcopy var) (cond ((gvector? var) (apply gvector (gvector->list var))) ((vector? var) (apply vector-immutable (vector var))) (else var)))'
+
     TO_INT = '(define (int x)(cond ((number? x) (exact-floor x)) ((string? x) (exact-floor (string->number x))) ((boolean? x) (if x 1 0))))'
     
     TO_FLOAT = '(define (float x)(cond ((number? x) (exact->inexact x)) ((string? x) (exact->inexact (string->number x))) ((boolean? x) (if x 1.0 0.0))))'
@@ -44,6 +46,7 @@ class FlagRequirements():
         'NOT_EQUAL'       : set(),
         'INPUT'           : set(),
         'GROWABLE_VECTOR' : set(),
+        'DEEPCOPY'        : set(),
         'TO_INT'          : set(),
         'TO_FLOAT'        : set(),
         'TO_STR'          : set(),

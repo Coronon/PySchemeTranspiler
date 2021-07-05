@@ -46,6 +46,8 @@ class Converter():
         
         if 'GROWABLE_VECTOR' in buildFlags:
             compilerCode += f"{extraC.GROWABLE_VECTOR}\n"
+        if 'DEEPCOPY' in buildFlags:
+            compilerCode += f"{extraC.DEEPCOPY}\n"
         if 'PRINT' in buildFlags:
             compilerCode += f"{extraC.PRINT}\n"
         if 'EQUAL' in buildFlags:
