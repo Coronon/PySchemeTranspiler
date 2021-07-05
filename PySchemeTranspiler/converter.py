@@ -74,9 +74,18 @@ class Converter():
     @staticmethod
     def compileBuildFlags(flags: Dict[str, bool]) -> Set[str]:
         ret = set()
+        queue = []
         for flag, active in flags.items():
             if active:
-                ret = ret | {flag} | FlagRequirements.requirements[flag]
+                queue.append(flag)
+        
+        while len(queue) > 0:
+            flag = queue.pop()
+            ret.add(flag)
+            
+            for requiredFlag in FlagRequirements.requirements[flag]:
+                if requiredFlag not in ret:
+                    queue.append(requiredFlag)
         
         return ret
     
