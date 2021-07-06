@@ -57,14 +57,22 @@ from ast import (
     arg,
     IfExp,
     Assert,
-    Tuple
+    Tuple,
+    In
     )
 
 from .exceptions import throw, warn
 
 IGNORED_IMPORTS = ["typing"]
 NUMBER_TYPES = [int, float]
+COLLECTION_TYPES = []
 SEPERATOR = '\n'
+
+def buildConstants() -> None:
+    """Build all constants that need types defined below
+    """
+    global COLLECTION_TYPES
+    COLLECTION_TYPES = [Typer.TList, Typer.TTuple]
 
 def copyLocation(origin: AST, destination: AST) -> None:
     """Copy the location of a node to another node
@@ -946,6 +954,13 @@ class _Builder():
             def determineOp(op: str, type1: type, type2: type) -> str:
                 if op in ["==", "!="]: return op
                 
+                if op == "in?":
+                    if isinstance(type2, Typer.TAny):
+                        warn("TypeWarining", "Can not assure type correctness for Any", node)
+                    elif all([not isinstance(type2, T) for T in COLLECTION_TYPES]):
+                        raise TypeError(f"argument of type {type2} is not iterable")
+                    return op
+                
                 #? Numbers
                 if type1 in NUMBER_TYPES and type2 in NUMBER_TYPES:
                     return op
@@ -1265,7 +1280,7 @@ class _Builder():
         retType = Typer.mergeTypes(bodyT, orelseT, True)
 
         return f"(if {test} {body} {orelse})", retType
-
+    
     @staticmethod
     def Assert(node: Assert) -> str:
         test = Builder.buildFromNode(node.test)
@@ -1298,6 +1313,11 @@ class _Builder():
             return IfLiteralResolver.resolve(*ret)
         
         return ret
+    
+    @staticmethod
+    def In(node: In) -> str:
+        Builder.buildFlags['IN'] = True
+        return "in?"
 
 class Builder():
     Interpreter = Callable[[AST], str]
@@ -1338,13 +1358,15 @@ class Builder():
         keyword     : _Builder.keyword,
         IfExp       : _Builder.IfExp,
         Assert      : _Builder.Assert,
-        Tuple       : _Builder.Tuple
+        Tuple       : _Builder.Tuple,
+        In          : _Builder.In
     }
     
     buildFlags = {
         'PRINT'           : False, # Include PRINT function
         'EQUAL'           : False, # Include == function
         'NOT_EQUAL'       : False, # Include != function
+        'IN'              : False, # Include in? function
         'INPUT'           : False, # Include input function
         'GROWABLE_VECTOR' : False, # Include growableVectors (std)
         'DEEPCOPY'        : False, # Include deepcopy function
@@ -1455,6 +1477,10 @@ class Builder():
         }
         
         Builder.setState({**defaultRootExclusiveState, **Builder.defaultWidenedState})
+        
+        #? This line is required as we can only declare the constants (located at the top)
+        #? after everythin else is defined
+        buildConstants()
     
     @staticmethod
     def getState() -> Dict[str, Any]:

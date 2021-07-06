@@ -54,6 +54,8 @@ class Converter():
             compilerCode += f"{extraC.EQUAL}\n"
         if 'NOT_EQUAL' in buildFlags:
             compilerCode += f"{extraC.NOT_EQUAL}\n"
+        if 'IN' in buildFlags:
+            compilerCode += f"{extraC.IN}\n"
         if 'INPUT' in buildFlags:
             compilerCode += f"{extraC.INPUT}\n"
         if 'TO_INT' in buildFlags:

@@ -20,6 +20,8 @@ class extraC():
 
     NOT_EQUAL = '(define (!= a b) (if (and (number? a) (number? b)) (not (= a b)) (not (equal? a b))))'
     
+    IN = '(define (in? elem coll) (cond ((gvector? coll) (!= (vector-member elem (gvector->vector coll)) #f)) ((vector? coll) (!= (vector-member elem coll) #f)) (else (raise "Argument is not iterable" #t))))'
+    
     INPUT = '(define (input prompt) (display prompt)(read-line))'
     
     GROWABLE_VECTOR = """
@@ -44,9 +46,10 @@ class FlagRequirements():
         'PRINT'           : set(),
         'EQUAL'           : set(),
         'NOT_EQUAL'       : set(),
+        'IN'              : set(['GROWABLE_VECTOR', 'NOT_EQUAL']),
         'INPUT'           : set(),
         'GROWABLE_VECTOR' : set(),
-        'DEEPCOPY'        : set(),
+        'DEEPCOPY'        : set(['GROWABLE_VECTOR']),
         'TO_INT'          : set(),
         'TO_FLOAT'        : set(),
         'TO_STR'          : set(),
