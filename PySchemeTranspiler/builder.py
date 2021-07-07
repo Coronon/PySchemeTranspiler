@@ -740,7 +740,7 @@ class _Builder():
             @staticmethod
             def int(node: Call) -> TupleType[str, type]:
                 Builder.buildFlags['TO_INT'] = True
-                accepted = [float, str, bool]
+                accepted = [int, float, str, bool]
                 if not (lArgs := len(node.args)) == 1:
                     raise TypeError(f"builtin typeConverter int takes 1 arguments, {lArgs} provided")
                 
