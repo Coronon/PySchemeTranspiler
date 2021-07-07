@@ -63,7 +63,7 @@ PYST will intentionally fail when an incorrect usage of `return` could lead to u
 
 ## Usage
 
-    usage: pystranspile [-h] [-version] -input INPUT -output OUTPUT
+    usage: pystranspile [-h] [-version] -input INPUT -output OUTPUT [-exportable]
     
     Transpile simple Python to Scheme(Racket).
     
@@ -72,9 +72,10 @@ PYST will intentionally fail when an incorrect usage of `return` could lead to u
       -version        display the current version
       -input INPUT    path to file that should be transpiled
       -output OUTPUT  path to file the transpiled code should be saved in
+      -exportable     don't wrap all usercode in a main function to allow easier exports (this might cause extra outputs)
     
     Copyright (C) 2021 Rubin Raithel
-You may abbreviate the above mentioned flags to `-i`, `-o` and `-v`.
+You may abbreviate the above mentioned flags to `-i`, `-o`, `-e` and `-v`.
 PYST is installed as a globally available script and does therefore not require the `python3` prefix but can still be invoked with it by typing `python3 -m pyschemetranspiler`.
 
 ## Installation
