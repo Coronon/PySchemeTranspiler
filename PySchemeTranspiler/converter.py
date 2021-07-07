@@ -44,6 +44,8 @@ class Converter():
         #* Edit code according to build flags    
         buildFlags = Converter.compileBuildFlags(Builder.buildFlags)
         
+        if 'NAME_IS_MAIN' in buildFlags:
+            compilerCode += f"{extraC.NAME_IS_MAIN}\n"
         if 'GROWABLE_VECTOR' in buildFlags:
             compilerCode += f"{extraC.GROWABLE_VECTOR}\n"
         if 'DEEPCOPY' in buildFlags:

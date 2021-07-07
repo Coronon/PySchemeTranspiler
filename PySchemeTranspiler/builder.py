@@ -1367,6 +1367,7 @@ class Builder():
     }
     
     buildFlags = {
+        'NAME_IS_MAIN'    : True,  # Include '__name__' declaration
         'PRINT'           : False, # Include PRINT function
         'EQUAL'           : False, # Include == function
         'NOT_EQUAL'       : False, # Include != function
@@ -1453,16 +1454,17 @@ class Builder():
         """Init the root state to avoid foreward declaration issues
         """
         defaultRootExclusiveState = {
-            'bool'  : bool,
-            'int'   : int,
-            'float' : float,
-            'str'   : str,
-            'list'  : list,
-            'print' : Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None), #? This is a dummy that will be transpiled to 'PRINT'
-            'PRINT' : Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None),
-            'input' : Typer.TFunction([str], kwArgs=[], vararg=False, ret=str),
-            'range' : Typer.TFunction([int], kwArgs=[], vararg=True, ret=Typer.TList(int, native=True)), #? We set this to vararg as we specifically check this case
-            'len'   : Typer.TFunction([Typer.TUnion([str, Typer.TList, Typer.TTuple])], kwArgs=[], vararg=False, ret=int)
+            '__name__' : str,
+            'bool'     : bool,
+            'int'      : int,
+            'float'    : float,
+            'str'      : str,
+            'list'     : list,
+            'print'    : Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None), #? This is a dummy that will be transpiled to 'PRINT'
+            'PRINT'    : Typer.TFunction([Any], kwArgs=[], vararg=True, ret=None),
+            'input'    : Typer.TFunction([str], kwArgs=[], vararg=False, ret=str),
+            'range'    : Typer.TFunction([int], kwArgs=[], vararg=True, ret=Typer.TList(int, native=True)), #? We set this to vararg as we specifically check this case
+            'len'      : Typer.TFunction([Typer.TUnion([str, Typer.TList, Typer.TTuple])], kwArgs=[], vararg=False, ret=int)
             #? No primitive types should be shadowed by their corresponding caster functionTypes! This is just help for the developer
             # 'int'   : Typer.TFunction([Typer.TUnion([float, str, bool])],       kwArgs=[], vararg=False, ret=int),
             # 'float' : Typer.TFunction([Typer.TUnion([int, str, bool])],         kwArgs=[], vararg=False, ret=float),

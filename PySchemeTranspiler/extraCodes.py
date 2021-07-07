@@ -14,6 +14,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 class extraC():
+    NAME_IS_MAIN = '(define __name__ "__main__")'
+    
     PRINT = '(define (PRINT . args) (for-each (lambda (x i) (unless (= i 0) (display " ")) (display x)) args (range (length args)))(newline))'
     
     EQUAL = '(define (== a b) (if (and (number? a) (number? b)) (= a b) (equal? a b)))'
@@ -43,6 +45,7 @@ class extraC():
 
 class FlagRequirements():
     requirements = {
+        'NAME_IS_MAIN'    : set(),
         'PRINT'           : set(),
         'EQUAL'           : set(),
         'NOT_EQUAL'       : set(),
