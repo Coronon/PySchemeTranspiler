@@ -1066,7 +1066,9 @@ class _Builder():
             raise TypeError(f"can not assign value of type {vType} to variable with type annotation of {aType}")
         
         if Builder.inStateLocal(name):
-            if Builder.config['TYPES_STRICT']:
+            if isinstance(Builder.getStateKeyLocal(name), Typer.TPending):
+                pass
+            elif Builder.config['TYPES_STRICT']:
                 #? Strict mode
                 raise TypeError(f"Can not redefine variable type")
             else:
@@ -1074,15 +1076,17 @@ class _Builder():
                 if Builder.getStateKeyLocal('__definitionsClaim__'):
                     warn("TypeWarning", "Can not assure type correctness for retyped variable in a control structure", Builder.currentNode)
                 
-                Builder.setStateKey(name, aType)
+            Builder.setStateKey(name, aType)
                 
             return f"(set! {name} {value})"
         else:
-            Builder.setStateKey(name, aType)
             if Builder.getStateKeyLocal('__assignSkipValue__'):
                 #? Some component doesnt want us to include the value
+                # Set as TPending to allow AnnAssign in if
+                Builder.setStateKey(name, Typer.TPending())
                 return f"(define {name} void)"
             else:
+                Builder.setStateKey(name, aType)
                 return f"(define {name} {value})"
     
     @staticmethod
