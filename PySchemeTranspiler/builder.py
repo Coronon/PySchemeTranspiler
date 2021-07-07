@@ -58,7 +58,8 @@ from ast import (
     IfExp,
     Assert,
     Tuple,
-    In
+    In,
+    AugAssign
     )
 
 from .exceptions import throw, warn
@@ -337,7 +338,7 @@ class _Builder():
                     elif isinstance(node.value, Subscript):
                         return handleSubscript(node.value, newName)
                     else:
-                        raise ValueError(f"AugAssign is not supported for subscripts with underlying {type(node.value)}")
+                        raise ValueError(f"MultiAssign is not supported for subscripts with underlying {type(node.value)}")
                 def getName(node: Union[Name, Subscript]) -> str:
                     """Determine the name of the underlaying variable
 
@@ -1322,6 +1323,15 @@ class _Builder():
     def In(node: In) -> str:
         Builder.buildFlags['IN'] = True
         return "in?"
+    
+    @staticmethod
+    def AugAssign(node: AugAssign) -> str:
+        binOp = BinOp(node.target, node.op, node.value)
+        copyLocation(node, binOp)
+        assign = Assign([node.target], binOp)
+        copyLocation(node, assign)
+        
+        return Builder.buildFromNode(assign)
 
 class Builder():
     Interpreter = Callable[[AST], str]
@@ -1363,7 +1373,8 @@ class Builder():
         IfExp       : _Builder.IfExp,
         Assert      : _Builder.Assert,
         Tuple       : _Builder.Tuple,
-        In          : _Builder.In
+        In          : _Builder.In,
+        AugAssign   : _Builder.AugAssign
     }
     
     buildFlags = {
