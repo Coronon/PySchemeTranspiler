@@ -21,7 +21,9 @@ There might still be special edge cases not documented that can cause faulty tra
  - Types: int, float, str, bool, None, List[{Type}] (Indexing + append, pop and insert), Tuple[{Type, ...}]
  - If, elif, else (also nested) (comparators eg. `!=` `==` `>=` and `in` (for List and Tuple) but not `is` or `is not`)
  - MultiAssign swapping (`seq[n - 1], seq[n] = seq[n], seq[n - 1]`)
+ - Augmented assignment (`a += 17`)
  - If expressions (`var = a if b else c`)
+  - `__name__ == '__main__'` -> will always be true
  - For (also nested)
  - Assert
 
