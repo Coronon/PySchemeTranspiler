@@ -1292,7 +1292,7 @@ class _Builder():
         if node.msg is not None:
             customMsg, customMsgT = Builder.buildFromNodeType(node.msg)
             msg += f": {customMsg if customMsgT is not str else customMsg[1:-1]}"
-        return f'(unless {test} (error "{msg}"))'
+        return f'(unless {test} (raise "{msg}" #t))'
     
     @staticmethod
     def Tuple(node: Dict) -> TupleType[str, type]:
