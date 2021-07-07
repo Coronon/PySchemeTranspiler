@@ -23,7 +23,7 @@ from .coloring import Colors, colorB, colorT
 
 class Converter():
     @staticmethod
-    def transpile(file: TextIO) -> str:
+    def transpile(file: TextIO, useMain: bool = True) -> str:
         #* Basic setup
         Shared.currentFile = file.name
         
@@ -73,7 +73,7 @@ class Converter():
             return userCode.strip()
         
         
-        return f"{compilerCode}\n(define (main)\n\n{userCode}\n(void))\n(main)".strip()
+        return f"{compilerCode}\n(define (main)\n\n{userCode}\n(void))\n(main)".strip() if useMain else f"{compilerCode}\n{userCode}".strip()
     
     @staticmethod
     def compileBuildFlags(flags: Dict[str, bool]) -> Set[str]:

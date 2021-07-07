@@ -44,13 +44,18 @@ def main() -> None:
         help='path to file the transpiled code should be saved in',
         required=True
         )
+    parser.add_argument(
+        '-exportable',
+        action='store_true',
+        help='don\'t wrap all usercode in a main function to allow easier exports (this might cause extra outputs)'
+    )
     
     args = parser.parse_args()
     
     Converter.welcome()
     try:
         with open(args.input, 'r') as file:
-            transpiled = Converter.transpile(file)
+            transpiled = Converter.transpile(file, not args.exportable)
     except OSError:
         print(colorT("Error accessing the input file", Colors.RED))
         raise SystemExit
