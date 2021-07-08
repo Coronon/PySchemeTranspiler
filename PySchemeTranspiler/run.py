@@ -23,7 +23,7 @@ def main() -> None:
         description='Transpile simple Python to Scheme(Racket).',
         epilog='Copyright (C) 2021 Rubin Raithel'
         )
-    parser.version = 'PySchemeTranspiler v1.2'
+    parser.version = 'PySchemeTranspiler v1.3'
     
     parser.add_argument(
         '-version',

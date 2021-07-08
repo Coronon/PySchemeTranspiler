@@ -102,7 +102,7 @@ class Converter():
         """Welcome the user with a nice greeting
         """
         Converter.displayArt()
-        print(colorT("PySchemeTranspiler v1.2, Copyright (C) 2021 Rubin Raithel", Colors.GREEN))
+        print(colorT("PySchemeTranspiler v1.3, Copyright (C) 2021 Rubin Raithel", Colors.GREEN))
         print(colorT("This program comes with ABSOLUTELY NO WARRANTY. For details see the 'LICENSE' file.\n\n", Colors.GREEN))
     
     @staticmethod

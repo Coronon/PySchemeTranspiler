@@ -20,7 +20,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="PySchemeTranspiler",
-    version="1.2",
+    version="1.3",
     author="Rubin Raithel",
     author_email="dev@rubinraithel.de",
     description="Transpile simple Python to Scheme(Racket)",
