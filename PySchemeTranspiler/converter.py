@@ -46,6 +46,8 @@ class Converter():
         
         if 'NAME_IS_MAIN' in buildFlags:
             compilerCode += f"{extraC.NAME_IS_MAIN}\n"
+        if 'GROWABLE_VECTOR_REQUIRE' in buildFlags:
+            compilerCode += f"{extraC.GROWABLE_VECTOR_REQUIRE}\n"
         if 'GROWABLE_VECTOR' in buildFlags:
             compilerCode += f"{extraC.GROWABLE_VECTOR}\n"
         if 'DEEPCOPY' in buildFlags:
@@ -68,6 +70,8 @@ class Converter():
             compilerCode += f"{extraC.TO_STR}\n"
         if 'TO_BOOL' in buildFlags:
             compilerCode += f"{extraC.TO_BOOL}\n"
+        if 'TO_LIST' in buildFlags:
+            compilerCode += f"{extraC.TO_LIST}\n"
         
         if compilerCode == "":
             return userCode.strip()

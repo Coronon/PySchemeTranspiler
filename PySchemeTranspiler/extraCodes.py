@@ -26,8 +26,9 @@ class extraC():
     
     INPUT = '(define (input prompt) (display prompt)(read-line))'
     
+    GROWABLE_VECTOR_REQUIRE = '(require data/gvector)'
+    
     GROWABLE_VECTOR = """
-(require data/gvector)
 (define (safe-gvector-set! vec i elm) (if (< i (gvector-count vec)) (gvector-set! vec i elm) (raise "IndexError: list assignment index out of range" #t)))
 (define (gvector-pop! vec i) (define ret (gvector-ref vec i)) (gvector-remove! vec i)ret)
 (define (gvector-access vec i) (if (>= i 0) (gvector-ref vec i) (gvector-ref vec (+ (gvector-count vec) i))))
@@ -42,21 +43,25 @@ class extraC():
     TO_STR = '(define (str x)(cond ((number? x) (number->string x)) ((string? x) x) ((boolean? x) (if x "True" "False"))))'
     
     TO_BOOL = '(define (bool x)(cond ((number? x) (!= x 0)) ((string? x) (!= x "")) ((boolean? x) x)))'
+    
+    TO_LIST = '(define (toList x) (cond ((gvector? x) (gvector->list x)) ((vector? x) (vector->list x)) (else (raise "Can not convert object to list" #t))))'
 
 class FlagRequirements():
     requirements = {
-        'NAME_IS_MAIN'    : set(),
-        'PRINT'           : set(),
-        'EQUAL'           : set(),
-        'NOT_EQUAL'       : set(),
-        'IN'              : set(['GROWABLE_VECTOR', 'NOT_EQUAL']),
-        'INPUT'           : set(),
-        'GROWABLE_VECTOR' : set(),
-        'DEEPCOPY'        : set(['GROWABLE_VECTOR']),
-        'TO_INT'          : set(),
-        'TO_FLOAT'        : set(),
-        'TO_STR'          : set(),
-        'TO_BOOL'         : set(['NOT_EQUAL']),
+        'NAME_IS_MAIN'            : set(),
+        'PRINT'                   : set(),
+        'EQUAL'                   : set(),
+        'NOT_EQUAL'               : set(),
+        'IN'                      : set(['GROWABLE_VECTOR_REQUIRE', 'NOT_EQUAL']),
+        'INPUT'                   : set(),
+        'GROWABLE_VECTOR_REQUIRE' : set(),
+        'GROWABLE_VECTOR'         : set(['GROWABLE_VECTOR_REQUIRE']),
+        'DEEPCOPY'                : set(['GROWABLE_VECTOR_REQUIRE']),
+        'TO_INT'                  : set(),
+        'TO_FLOAT'                : set(),
+        'TO_STR'                  : set(),
+        'TO_BOOL'                 : set(['NOT_EQUAL']),
+        'TO_LIST'                 : set(['GROWABLE_VECTOR_REQUIRE']),
     }
 
 class Arts():
