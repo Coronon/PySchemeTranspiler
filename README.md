@@ -24,14 +24,14 @@ There might still be special edge cases not documented that can cause faulty tra
  - Augmented assignment (`a += 17`)
  - If expressions (`var = a if b else c`)
   - `__name__ == '__main__'` -> will always be true
- - For (also nested)
+ - For (also nested) (also multi-target e.g. `for i, j in [[0, 1], [2, 3], [4, 5]]:`)
  - Assert
 
 ### Typing system
 PYST has a fully fledged typing system and matches types at transpile-time. While most types can dynamically be deduced `lists` still need to be annotated in the standard python way, for example: `myList: List[int] = [1,2,3]`. This restriction is necessary because PYST can not infer a type for an empty list. Type annotations are always checked. To create a pending type you may assign a variable to *None*: `var = None`. This will make the type pending and allow later assigning of a different value. After a type is determined it may not be changed but can be set to None again. None can act as a `nullptr` value as in C++ to create optional returns. The variable which has a type but is set to a value of `None` may still be used like one with a value of its own type, any runtime errors may be avoided by the user (a None check for example: `if var != None:`).
 
 #### Reserved names
-To avoid undefined behavior during transpilation, you should avoid reassigning the special names: int, float, str, bool, list, print, input, range, len, deepcopy and \__{anything}__
+To avoid undefined behavior during transpilation, you should avoid reassigning the special names: int, float, str, bool, list, print, input, range, len, deepcopy, toList and \__{anything}__
 
 ### Error and warning system
 PYST tries to make errors as transparent as possible. If a transpilation error is encountered, a clear message explaining it and the exact place it occurred will be presented to the user. For example the following code will result in a transpilation error:
