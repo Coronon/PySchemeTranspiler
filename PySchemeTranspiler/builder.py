@@ -1212,9 +1212,16 @@ class _Builder():
             iterc = f"(vector->list {iterc})"
         
         #* Determine target
-        target = None
-        if isinstance(node.target, Name):
-            target = node.target.id
+        def handleTarget(target: str, targetType: type) -> None:
+            """Handle target type checking and definition
+
+            Arguments:
+                target     {str}  -- Name of target
+                targetType {type} -- Tyoe target should be
+
+            Raises:
+                TypeError: Target and type incompatible
+            """
             if Builder.inState(target):
                 if Builder.config['TYPES_STRICT']:
                     #? Strict mode
@@ -1227,11 +1234,33 @@ class _Builder():
                 Builder.setStateKey(
                     '__definitions__',
                     [*Builder.getStateKeyLocal('__definitions__'), f"(define {target} void)"]
-                    )       
+                    )
+        
+        target = None
+        if isinstance(node.target, Name):
+            target = node.target.id
+            handleTarget(target, targetType)
+        elif isinstance(node.target, Tuple):
+            target = []
+            
+            if not isinstance(targetType, Typer.Iterable):
+                raise TypeError(f"MultiTarget for loop requires iterable subtype, '{targetType}' given")
+            
+            warn("TypeWarning", "No type guarantees can be made about multi-variable iteration", node)
+            for multiT in node.target.elts:
+                if not isinstance(multiT, Name):
+                    raise TypeError(f"MultiTarget '{multiT}' in for loop is not a variable name")
+
+                target.append(multiT.id)
+                handleTarget(multiT.id, targetType.iterType)
         else:
             raise NotImplementedError("multiple targets are currently not supported in for loops")
         
-        body = f"(set! {target} __i__)"
+        if isinstance(target, str):
+            body = f"(set! {target} __i__)"
+        else:
+            Builder.buildFlags['TO_LIST'] = True
+            body = f"(set!-values ({' '.join(target)}) (apply values (toList __i__)))"
         
         #* Check for hierarchy
         rootDef = False
@@ -1378,18 +1407,20 @@ class Builder():
     }
     
     buildFlags = {
-        'NAME_IS_MAIN'    : True,  # Include '__name__' declaration
-        'PRINT'           : False, # Include PRINT function
-        'EQUAL'           : False, # Include == function
-        'NOT_EQUAL'       : False, # Include != function
-        'IN'              : False, # Include in? function
-        'INPUT'           : False, # Include input function
-        'GROWABLE_VECTOR' : False, # Include growableVectors (std)
-        'DEEPCOPY'        : False, # Include deepcopy function
-        'TO_INT'          : False, # Include to int converter
-        'TO_FLOAT'        : False, # Include to float converter
-        'TO_STR'          : False, # Include to str converter
-        'TO_BOOL'         : False, # Include to bool converter
+        'NAME_IS_MAIN'            : True,  # Include '__name__' declaration
+        'PRINT'                   : False, # Include PRINT function
+        'EQUAL'                   : False, # Include == function
+        'NOT_EQUAL'               : False, # Include != function
+        'IN'                      : False, # Include in? function
+        'INPUT'                   : False, # Include input function
+        'GROWABLE_VECTOR_REQUIRE' : False, # Include growableVectors require
+        'GROWABLE_VECTOR'         : False, # Include growableVectors (std)
+        'DEEPCOPY'                : False, # Include deepcopy function
+        'TO_INT'                  : False, # Include to int converter
+        'TO_FLOAT'                : False, # Include to float converter
+        'TO_STR'                  : False, # Include to str converter
+        'TO_BOOL'                 : False, # Include to bool converter
+        'TO_LIST'                 : False, # Include to list converter
     }
     
     config = {
@@ -1801,8 +1832,19 @@ class Typer():
         def __repr__(self):
             return str(f"<{self.type}: {self.contained}>")
     
-    class TAny(T):
+    class TAny(Iterable, T):
         type = "TAny"
+        
+        #? Empty constructor so that creating a Typer.TAny instance doesnt
+        #? call Typer.Iterable constructor
+        def __init__(self):
+            pass
+        
+        #! TAny as we dont give guarantees for iteration over Any
+        #? This allows MultiTarget iteration in for loops
+        @property
+        def iterType(self):
+            return Typer.TAny()
         
         def __repr__(self):
             return str(f"Any")
