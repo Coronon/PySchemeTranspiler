@@ -1170,8 +1170,8 @@ class _Builder():
         return ret
     
     @staticmethod
-    def Index(node: Index) -> TupleType[str, int]:
-        if isinstance(node.value, Name) or isinstance(node.value, Constant) or isinstance(node.value, UnaryOp) or isinstance(node.value, BinOp):
+    def Index(node: Index) -> TupleType[str, type]:
+        if isinstance(node.value, Name) or isinstance(node.value, Constant) or isinstance(node.value, Call) or isinstance(node.value, UnaryOp) or isinstance(node.value, BinOp):
             return Builder.buildFromNodeType(node.value)
         else:
             raise TypeError(f"value of type {type(node.value)} can not be used as an index")
