@@ -19,7 +19,7 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="PySchemeTranspiler",
+    name="pyschemetranspiler",
     version="1.3",
     author="Rubin Raithel",
     author_email="dev@rubinraithel.de",
