@@ -25,6 +25,7 @@ There might still be special edge cases not documented that can cause faulty tra
  - If expressions (`var = a if b else c`)
   - `__name__ == '__main__'` -> will always be true
  - For (also nested) (also multi-target e.g. `for i, j in [[0, 1], [2, 3], [4, 5]]:`)
+ - While (also nested) (Avoid `while True:` as `break` and `continue` are not implemented)
  - Assert
 
 ### Typing system
