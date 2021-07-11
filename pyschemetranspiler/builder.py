@@ -59,7 +59,8 @@ from ast import (
     Assert,
     Tuple,
     In,
-    AugAssign
+    AugAssign,
+    While
     )
 
 from .exceptions import throw, warn
@@ -230,7 +231,7 @@ class _Builder():
             node.value = Constant(None)
             copyLocation(node, node.value)
         
-        if Builder.getStateKeyLocal('__for__'):
+        if Builder.getStateKeyLocal('__loop__'):
             raise ValueError("Returning inside of loops is not supported")
             
         value, vType = Builder.buildFromNodeType(node.value)
@@ -1269,7 +1270,7 @@ class _Builder():
             rootDef = True
             Builder.setStateKey('__definitionsClaim__', True)
         
-        with TempState('__for__', True):
+        with TempState('__loop__', True):
             with TempState('__innerBody__', True):
                 for elem in node.body:
                     #? Move possible definitions before rootDef in current scope
@@ -1362,6 +1363,58 @@ class _Builder():
         
         return Builder.buildFromNode(assign)
 
+    @staticmethod
+    def While(node: While) -> str:
+        def handleAssign(node: Assign) -> str:
+            with TempState('__assignSkipValue__', True):
+                possibleDefine, isDefine = Builder.buildFromNodeType(node)
+            if isDefine:
+                Builder.setStateKey(
+                '__definitions__',
+                [*Builder.getStateKeyLocal('__definitions__'), possibleDefine]
+                )
+                return Builder.buildFromNode(node)
+            
+            return possibleDefine
+        
+        #* Compile test
+        test = Builder.buildFromNode(node.test)
+        
+        #* Check for hierarchy
+        rootDef = False
+        #? Try to aquire root(if/loop) claim
+        if not Builder.getStateKeyLocal('__definitionsClaim__'):
+            rootDef = True
+            Builder.setStateKey('__definitionsClaim__', True)
+        
+        body = ""
+        with TempState('__loop__', True):
+            with TempState('__innerBody__', True):
+                for elem in node.body:
+                    #? Move possible definitions before rootDef in current scope
+                    if isinstance(elem, Assign) or isinstance(elem, AnnAssign):
+                        body += handleAssign(elem)
+                        continue
+                    
+                    body += Builder.buildFromNode(elem)
+        
+        if len(body) == 0:
+            raise IndentationError("expected an indented block")
+        
+        if node.orelse:
+            raise NotImplementedError("'else' syntax is not supported in conjunction with while loops")
+        
+        
+        ret = f"(let __while__ () (when {test} {body} (__while__)))"
+        if not rootDef:
+            return ret
+        else:
+            defs = Builder.getStateKeyLocal('__definitions__')
+            Builder.setStateKey('__definitions__', [])
+            Builder.setStateKey('__definitionsClaim__', False)
+            
+            return f"{SEPERATOR.join(defs)}{SEPERATOR if len(defs) > 0 else ''}{ret}"
+
 class Builder():
     Interpreter = Callable[[AST], str]
     switcher: Dict[type, Callable] = {
@@ -1403,7 +1456,8 @@ class Builder():
         Assert      : _Builder.Assert,
         Tuple       : _Builder.Tuple,
         In          : _Builder.In,
-        AugAssign   : _Builder.AugAssign
+        AugAssign   : _Builder.AugAssign,
+        While       : _Builder.While,
     }
     
     buildFlags = {
@@ -1514,7 +1568,7 @@ class Builder():
             # 'bool'  : Typer.TFunction([Typer.TUnion([int, float, str, list])],  kwArgs=[], vararg=False, ret=bool)
         }
         Builder.defaultWidenedState = {
-            '__for__'             : False, #? Flag for transpiler if in an active loop
+            '__loop__'            : False, #? Flag for transpiler if in an active loop
             '__pathDidReturn__'   : set(), #? Used to check that all paths in nested if/loop have same return behaviour
             '__innerBody__'       : False, #? Flag for transpiler if currently in an if body
             '__definitionsClaim__': False, #? Flag for transpiler to communicate root(if/loop) lock
