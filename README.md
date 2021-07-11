@@ -79,7 +79,17 @@ You may abbreviate the above mentioned flags to `-i`, `-o`, `-e` and `-v`.
 PYST is installed as a globally available script and does therefore not require the `python3` prefix but can still be invoked with it by typing `python3 -m pyschemetranspiler`.
 
 ## Installation
-PYST is currently not available on the PyPi and can therefore only be installed through a local clone of this repo and the command `pip install .` which will make the `pystranspile` command globally available.
+*Please remember that this transpiler only works with Python 3.8.\**
+
+There are currently two ways of installing PYST:
+
+#### 1. Installing from PyPi (Release mode)
+[Link](https://pypi.org/project/pyschemetranspiler/) to PyPi page.
+
+`pip install --upgrade pyschemetranspiler`
+
+#### 3. Installing from source (Dev mode)
+PYST can be installed through a local clone of this repo and the command `pip install .` (in the cloned repository) which will make the `pystranspile` command globally available.
 
 ## License
 PYST is currently licensed under the [GPLv3](https://www.gnu.org/licenses/gpl-3.0.en.html) license.
