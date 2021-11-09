@@ -540,12 +540,10 @@ class _Builder():
                 #? Check argument length matches
                 fArgsDef = len(fType.args)
                 fArgsKey = len(fType.kwArgs)
-                fArgs    = fArgsDef + fArgsKey
                 nArgsDef = len(node.args)
                 nArgsKey = len(node.keywords)
-                nArgs = nArgsDef + nArgsKey
                 if (fType.vararg and nArgsDef < fArgsDef) or (not fType.vararg and fArgsDef != nArgsDef):
-                    raise TypeError(f"{fName} takes {fArgsDef} positional arguments but you provided {nArgs}")
+                    raise TypeError(f"{fName} takes {fArgsDef} positional arguments but you provided {nArgsDef}")
                 
                 if not (nArgsKey <= fArgsKey):
                     raise TypeError(f"{fName} takes {fArgsKey} keyword arguments but you provided {nArgsKey}")
