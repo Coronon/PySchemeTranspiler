@@ -1844,7 +1844,7 @@ class Typer():
         type = "TList"
 
         def __init__(self, contained: type, native: bool=False):
-            super(Typer.TList, self).__init__(contained)
+            Iterable.__init__(contained)
             self.contained = contained
             self.native    = native
         
@@ -1880,7 +1880,7 @@ class Typer():
         
         def __init__(self, contained: TupleType[type]):
             #! TAny as we dont give guarantees for iteration over tuples
-            super(Typer.TTuple, self).__init__(Typer.TAny())
+            Iterable.__init__(Typer.TAny())
             self.contained = contained
         
         def __repr__(self):
