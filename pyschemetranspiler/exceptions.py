@@ -16,7 +16,7 @@
 from ast import AST
 
 from .shared import Shared
-from .coloring import Colors, colorB, colorT
+from .coloring import Colors, colorT
 
 class ConversionException(Exception):
     pass
