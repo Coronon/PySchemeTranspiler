@@ -1934,7 +1934,7 @@ class Typer():
         if type1 == type2:
             return True
         #? Types are equal - None can be used as literal type
-        if type1 == None and type2 == type(None) or type1 == type(None) and type2 == None:
+        if type1 is None and type2 == type(None) or type1 == type(None) and type2 is None:
             return True
         
         #? One or both types are Any
