@@ -19,7 +19,7 @@ from .parser import Parser
 from .builder import Builder
 from .shared import Shared
 from .extraCodes import extraC, FlagRequirements, Arts
-from .coloring import Colors, colorB, colorT
+from .coloring import Colors, colorT
 
 class Converter():
     @staticmethod
