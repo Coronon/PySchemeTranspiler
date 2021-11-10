@@ -1887,6 +1887,7 @@ class Typer():
     class TAny(Iterable, T):
         type = "TAny"
         
+        #lgtm [py/missing-call-to-init]
         #? Empty constructor so that creating a Typer.TAny instance doesnt
         #? call Typer.Iterable constructor
         def __init__(self):
