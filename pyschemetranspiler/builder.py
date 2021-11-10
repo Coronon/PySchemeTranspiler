@@ -540,12 +540,10 @@ class _Builder():
                 #? Check argument length matches
                 fArgsDef = len(fType.args)
                 fArgsKey = len(fType.kwArgs)
-                fArgs    = fArgsDef + fArgsKey
                 nArgsDef = len(node.args)
                 nArgsKey = len(node.keywords)
-                nArgs = nArgsDef + nArgsKey
                 if (fType.vararg and nArgsDef < fArgsDef) or (not fType.vararg and fArgsDef != nArgsDef):
-                    raise TypeError(f"{fName} takes {fArgsDef} positional arguments but you provided {nArgs}")
+                    raise TypeError(f"{fName} takes {fArgsDef} positional arguments but you provided {nArgsDef}")
                 
                 if not (nArgsKey <= fArgsKey):
                     raise TypeError(f"{fName} takes {fArgsKey} keyword arguments but you provided {nArgsKey}")
@@ -1844,7 +1842,7 @@ class Typer():
         type = "TList"
 
         def __init__(self, contained: type, native: bool=False):
-            super(Typer.TList, self).__init__(contained)
+            Typer.Iterable.__init__(self, contained)
             self.contained = contained
             self.native    = native
         
@@ -1880,7 +1878,7 @@ class Typer():
         
         def __init__(self, contained: TupleType[type]):
             #! TAny as we dont give guarantees for iteration over tuples
-            super(Typer.TTuple, self).__init__(Typer.TAny())
+            Typer.Iterable.__init__(self, Typer.TAny())
             self.contained = contained
         
         def __repr__(self):
@@ -1889,6 +1887,7 @@ class Typer():
     class TAny(Iterable, T):
         type = "TAny"
         
+        #lgtm [py/missing-call-to-init]
         #? Empty constructor so that creating a Typer.TAny instance doesnt
         #? call Typer.Iterable constructor
         def __init__(self):
@@ -1934,7 +1933,7 @@ class Typer():
         if type1 == type2:
             return True
         #? Types are equal - None can be used as literal type
-        if type1 == None and type2 == type(None) or type1 == type(None) and type2 == None:
+        if type1 is None and type2 == type(None) or type1 == type(None) and type2 is None:
             return True
         
         #? One or both types are Any

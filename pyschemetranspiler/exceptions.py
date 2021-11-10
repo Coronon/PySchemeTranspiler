@@ -16,7 +16,7 @@
 from ast import AST
 
 from .shared import Shared
-from .coloring import Colors, colorB, colorT
+from .coloring import Colors, colorT
 
 class ConversionException(Exception):
     pass
@@ -33,7 +33,7 @@ def throw(expt: Exception, node: AST) -> None:
                     leadingSpaces = len(line) - len(line.lstrip(' '))
                     print(colorT(infoStr, Colors.ORANGE), line.strip())
                     print(' ' * (len(infoStr) + node.col_offset - leadingSpaces + 1) + colorT('^', Colors.GREEN))
-    except:
+    except Exception:
         print(colorT(f"Could not print offending code at: {node.lineno}>{node.col_offset}", Colors.ORANGE))
     raise SystemExit()
 
@@ -49,5 +49,5 @@ def warn(warnType: str, warn: Exception, node: AST) -> None:
                     leadingSpaces = len(line) - len(line.lstrip(' '))
                     print(colorT(infoStr, Colors.ORANGE), line.strip())
                     print(' ' * (len(infoStr) + node.col_offset - leadingSpaces + 1) + colorT('^', Colors.GREEN))
-    except:
+    except Exception:
         print(colorT(f"Could not print maybe offending code at: {node.lineno}>{node.col_offset}", Colors.ORANGE))
