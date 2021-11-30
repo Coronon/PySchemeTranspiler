@@ -13,6 +13,9 @@ There might still be special edge cases not documented that can cause faulty tra
 ## Supported features
 
 ### Language features
+
+*Please install from master (source) if you wish to use all features*
+
  - Variables
  - Constants
  - Arithmetic
